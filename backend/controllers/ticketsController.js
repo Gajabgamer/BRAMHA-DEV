@@ -6,18 +6,21 @@ const {
   rebuildIssuesFromFeedback,
 } = require('../lib/issueAggregator');
 const { extractLocation } = require('../services/locationService');
+const { parseAgentDescription } = require('../services/agentService');
 
 const VALID_STATUSES = new Set(['open', 'in_progress', 'resolved']);
 const VALID_PRIORITIES = new Set(['low', 'medium', 'high']);
 
 function normalizeTicket(row) {
+  const parsedDescription = parseAgentDescription(row.description);
   return {
     id: row.id,
     title: row.title,
-    description: row.description,
+    description: parsedDescription.description,
     status: row.status,
     priority: row.priority,
     linkedIssueId: row.linked_issue_id,
+    createdByAgent: parsedDescription.createdByAgent,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     linkedIssue: row.issues

@@ -82,6 +82,11 @@ export default function ReminderCard({
               <Clock3 className="h-3.5 w-3.5" />
               {formatRelativeTime(reminder.remindAt)}
             </span>
+            {reminder.createdByAgent && (
+              <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1 text-xs font-medium text-cyan-200">
+                Created by Agent
+              </span>
+            )}
           </div>
 
           <h4 className="mt-3 text-sm font-semibold text-white">{reminder.title}</h4>

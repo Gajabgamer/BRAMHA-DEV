@@ -1,7 +1,9 @@
 const supabase = require('../lib/supabaseClient');
+const { insertFeedbackEventsDeduped } = require('../lib/feedbackDedup');
 const { rebuildIssuesFromFeedback } = require('../lib/issueAggregator');
 const { fetchPlayReviews, MAX_REVIEW_COUNT } = require('../services/reviewService');
 const { extractLocation } = require('../services/locationService');
+const { runAgent } = require('../services/agentService');
 
 function detectReviewSentiment(rating) {
   if (rating >= 4) {
@@ -30,22 +32,7 @@ async function fetchReviews(req, res) {
       return res.status(404).json({ error: 'No reviews available.' });
     }
 
-    const externalIds = reviews.map((review) => review.externalId);
-    const { data: existingRows, error: existingError } = await supabase
-      .from('feedback_events')
-      .select('external_id')
-      .eq('user_id', req.user.id)
-      .eq('source', 'app_review')
-      .in('external_id', externalIds);
-
-    if (existingError) {
-      throw existingError;
-    }
-
-    const existingIds = new Set((existingRows || []).map((row) => row.external_id));
-
     const rows = reviews
-      .filter((review) => !existingIds.has(review.externalId))
       .map((review) => ({
         user_id: req.user.id,
         source: 'app_review',
@@ -75,20 +62,20 @@ async function fetchReviews(req, res) {
         },
       }));
 
-    if (rows.length > 0) {
-      const { error: insertError } = await supabase.from('feedback_events').insert(rows);
+    const insertResult = await insertFeedbackEventsDeduped(req.user.id, rows, {
+      logLabel: 'app_review_fetch',
+    });
 
-      if (insertError) {
-        throw insertError;
-      }
-
+    if (insertResult.inserted > 0) {
       await rebuildIssuesFromFeedback(req.user.id);
+      await runAgent(req.user);
     }
 
     res.json({
       success: true,
-      count: rows.length,
-      duplicatesSkipped: reviews.length - rows.length,
+      fetched: reviews.length,
+      count: insertResult.inserted,
+      duplicatesSkipped: insertResult.duplicatesSkipped,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to fetch app reviews.';

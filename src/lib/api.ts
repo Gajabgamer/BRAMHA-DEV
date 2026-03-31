@@ -1,3 +1,5 @@
+import { getSupabaseBrowserClient } from "@/lib/supabase";
+
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000") + "/api";
 
 async function request<T>(
@@ -11,12 +13,33 @@ async function request<T>(
     "Content-Type": "application/json",
   };
 
+  const nextHeaders: Record<string, string> = {
+    ...headers,
+    ...(options.headers as Record<string, string> | undefined),
+  };
+
+  if (
+    typeof window !== "undefined" &&
+    typeof nextHeaders.Authorization === "string" &&
+    nextHeaders.Authorization.startsWith("Bearer ")
+  ) {
+    try {
+      const supabase = getSupabaseBrowserClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session?.access_token) {
+        nextHeaders.Authorization = `Bearer ${session.access_token}`;
+      }
+    } catch {
+      // Best effort only. If this fails, fall back to the caller-provided token.
+    }
+  }
+
   const config: RequestInit = {
     ...options,
-    headers: {
-      ...headers,
-      ...(options.headers ?? {}),
-    },
+    headers: nextHeaders,
   };
 
   const response = await fetch(url, config);
@@ -73,6 +96,20 @@ export const api = {
         headers: { Authorization: `Bearer ${token}` },
       }),
 
+    startGoogleCalendar: (token: string) =>
+      request<{ authUrl: string }>("/integrations/google-calendar/start", {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+
+    getGoogleCalendarStatus: (token: string) =>
+      request<{
+        connected: boolean;
+        email: string | null;
+        lastSyncedAt: string | null;
+      }>("/integrations/google-calendar/status", {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+
     startOutlook: (token: string) =>
       request<{ authUrl: string }>("/integrations/outlook/start", {
         headers: { Authorization: `Bearer ${token}` },
@@ -123,12 +160,17 @@ export const api = {
         body: JSON.stringify(data),
       }),
 
-    sync: (token: string, provider: string) =>
+    sync: (
+      token: string,
+      provider: string,
+      data?: Record<string, string | number | boolean | null>
+    ) =>
       request<{ success: boolean; provider: string; imported: number; skipped?: number; lastSyncedAt: string }>(
         `/connections/${provider}/sync`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
+          body: data ? JSON.stringify(data) : undefined,
         }
       ),
 
@@ -208,6 +250,42 @@ export const api = {
           headers: { Authorization: `Bearer ${token}` },
         }
       ),
+  },
+
+  agent: {
+    status: (token: string) =>
+      request<AgentStatus>("/agent/status", {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    actions: (token: string) =>
+      request<AgentAction[]>("/agent/actions", {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    updateSettings: (token: string, enabled: boolean) =>
+      request<AgentStatus>("/agent/settings", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ enabled }),
+      }),
+  },
+
+  notifications: {
+    list: (token: string) =>
+      request<{
+        notifications: Notification[];
+        unreadCount: number;
+      }>("/notifications", {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    markRead: (token: string, ids: string[]) =>
+      request<{
+        success: boolean;
+        notifications: Notification[];
+      }>("/notifications/read", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ids }),
+      }),
   },
 
   tickets: {
@@ -291,12 +369,20 @@ export const api = {
 
 export interface Connection {
   id: string;
-  provider: "gmail" | "outlook" | "instagram" | "app-reviews" | "google-play" | "imap";
+  provider:
+    | "gmail"
+    | "google_calendar"
+    | "outlook"
+    | "instagram"
+    | "app-reviews"
+    | "google-play"
+    | "imap";
   metadata: Record<string, string | number | boolean | null> | null;
   created_at: string;
   status?: string | null;
   last_synced_at?: string | null;
   last_error?: string | null;
+  expiry?: string | null;
 }
 
 // Types for API responses
@@ -434,6 +520,7 @@ export interface Ticket {
   status: TicketStatus;
   priority: TicketPriority;
   linkedIssueId: string | null;
+  createdByAgent?: boolean;
   linkedIssue: { id: string; title: string; priority: string } | null;
   createdAt: string;
   updatedAt: string;
@@ -449,9 +536,41 @@ export interface Reminder {
   status: ReminderStatus;
   linkedIssueId: string | null;
   linkedTicketId: string | null;
+  createdByAgent?: boolean;
   linkedIssue: { id: string; title: string; priority: string } | null;
   linkedTicket: { id: string; title: string; status: string } | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AgentAction {
+  id: string;
+  userId: string;
+  agentId: string;
+  actionType: string;
+  reason: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface AgentStatus {
+  enabled: boolean;
+  state: "active" | "processing" | "idle" | string;
+  lastRunAt: string | null;
+  latestBanner: string | null;
+  latestAction: AgentAction | null;
+  actions: AgentAction[];
+  listening: boolean;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: string;
+  read: boolean;
+  metadata: Record<string, unknown>;
+  createdAt: string;
 }
 

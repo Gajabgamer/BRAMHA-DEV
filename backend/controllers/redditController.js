@@ -1,8 +1,10 @@
 const supabase = require('../lib/supabaseClient');
+const { insertFeedbackEventsDeduped } = require('../lib/feedbackDedup');
 const { rebuildIssuesFromFeedback, detectSentiment } = require('../lib/issueAggregator');
 const { classifyFeedbackEvents } = require('../lib/groqFeedbackClassifier');
 const { extractLocation } = require('../services/locationService');
 const { searchReddit, MAX_LIMIT } = require('../services/redditService');
+const { runAgent } = require('../services/agentService');
 
 async function fetchRedditPosts(req, res) {
   try {
@@ -48,21 +50,7 @@ async function fetchRedditPosts(req, res) {
       });
     }
 
-    const externalIds = shortlistedPosts.map((post) => post.externalId);
-    const { data: existingRows, error: existingError } = await supabase
-      .from('feedback_events')
-      .select('external_id')
-      .eq('user_id', req.user.id)
-      .eq('source', 'reddit')
-      .in('external_id', externalIds);
-
-    if (existingError) {
-      throw existingError;
-    }
-
-    const existingIds = new Set((existingRows || []).map((row) => row.external_id));
     const rows = shortlistedPosts
-      .filter((post) => !existingIds.has(post.externalId))
       .map((post) => {
         const classification = classificationById.get(post.externalId);
         return {
@@ -94,20 +82,20 @@ async function fetchRedditPosts(req, res) {
         };
       });
 
-    if (rows.length > 0) {
-      const { error: insertError } = await supabase.from('feedback_events').insert(rows);
+    const insertResult = await insertFeedbackEventsDeduped(req.user.id, rows, {
+      logLabel: 'reddit',
+    });
 
-      if (insertError) {
-        throw insertError;
-      }
-
+    if (insertResult.inserted > 0) {
       await rebuildIssuesFromFeedback(req.user.id);
+      await runAgent(req.user);
     }
 
     return res.json({
       success: true,
-      count: rows.length,
-      duplicatesSkipped: shortlistedPosts.length - rows.length,
+      fetched: posts.length,
+      count: insertResult.inserted,
+      duplicatesSkipped: insertResult.duplicatesSkipped,
       filteredOut: posts.length - shortlistedPosts.length,
     });
   } catch (error) {

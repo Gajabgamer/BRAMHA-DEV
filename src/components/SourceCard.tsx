@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   CheckCircle2,
+  Calendar,
   ChevronDown,
   ChevronRight,
   Mail,
@@ -23,6 +24,7 @@ interface SourceCardProps {
     | "outlook"
     | "app-reviews"
     | "google-play"
+    | "google-calendar"
     | "instagram"
     | "imap"
     | "reddit"
@@ -37,8 +39,12 @@ interface SourceCardProps {
   onDisconnect?: () => void;
   syncing?: boolean;
   connectLabel?: string;
+  reconnectLabel?: string;
+  workingLabel?: string;
   collapsible?: boolean;
   collapsedLabel?: string;
+  alwaysShowChildren?: boolean;
+  helperText?: string;
   children?: React.ReactNode;
 }
 
@@ -47,6 +53,7 @@ const iconMap = {
   outlook: Mail,
   "app-reviews": Smartphone,
   "google-play": Smartphone,
+  "google-calendar": Calendar,
   instagram: MessageCircleHeart,
   imap: Inbox,
   reddit: MessageSquareText,
@@ -142,6 +149,17 @@ const sourceTheme = {
     titleHover: "group-hover:text-emerald-300",
     button: "hover:border-emerald-500 hover:bg-emerald-500/90 hover:text-slate-950 hover:shadow-lg hover:shadow-emerald-500/20",
   },
+  "google-calendar": {
+    cardIdle:
+      "border-blue-500/25 bg-[linear-gradient(135deg,rgba(59,130,246,0.18)_0%,rgba(15,23,42,0.94)_55%,rgba(15,23,42,0.98)_100%)]",
+    cardConnected:
+      "border-blue-400/35 bg-[linear-gradient(135deg,rgba(59,130,246,0.26)_0%,rgba(15,23,42,0.96)_55%,rgba(15,23,42,1)_100%)]",
+    iconIdle: "bg-blue-500/12 text-blue-300 ring-1 ring-inset ring-blue-500/20",
+    iconConnected: "bg-blue-500/18 text-blue-300 ring-1 ring-inset ring-blue-500/30",
+    hover: "hover:border-blue-400/45 hover:shadow-[0_18px_50px_-18px_rgba(59,130,246,0.45)]",
+    titleHover: "group-hover:text-blue-300",
+    button: "hover:border-blue-500 hover:bg-blue-500/90 hover:text-white hover:shadow-lg hover:shadow-blue-500/20",
+  },
 } as const;
 
 export default function SourceCard({
@@ -157,14 +175,18 @@ export default function SourceCard({
   onDisconnect,
   syncing = false,
   connectLabel = "Connect",
+  reconnectLabel = "Reconnect",
+  workingLabel = "Working...",
   collapsible = false,
   collapsedLabel = "Show setup",
+  alwaysShowChildren = false,
+  helperText,
   children,
 }: SourceCardProps) {
   const Icon = iconMap[icon] ?? AppWindow;
   const theme = sourceTheme[icon];
   const [expanded, setExpanded] = useState(false);
-  const showChildren = !collapsible || connected || expanded;
+  const showChildren = alwaysShowChildren || !collapsible || connected || expanded;
   const healthToneClass =
     healthTone === "good"
       ? "text-emerald-300"
@@ -239,18 +261,40 @@ export default function SourceCard({
 
       {children && showChildren && <div className="mb-4">{children}</div>}
 
+      {helperText && (
+        <p className="mb-4 text-xs text-slate-500">{helperText}</p>
+      )}
+
       <div className="mt-auto">
         {connected ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Button
-              variant="secondary"
-              className="w-full justify-between group-hover:border-slate-600"
-              onClick={onSync}
-              disabled={syncing}
-            >
-              {syncing ? "Syncing..." : "Sync Now"}
-              <ChevronRight className="h-4 w-4 text-slate-500 opacity-50 transition-opacity group-hover:opacity-100" />
-            </Button>
+          <div
+            className={cn(
+              "grid gap-3",
+              onSync || onConnect ? "sm:grid-cols-2" : "sm:grid-cols-1"
+            )}
+          >
+            {onSync && (
+              <Button
+                variant="secondary"
+                className="w-full justify-between group-hover:border-slate-600"
+                onClick={onSync}
+                disabled={syncing}
+              >
+                {syncing ? "Syncing..." : "Sync Now"}
+                <ChevronRight className="h-4 w-4 text-slate-500 opacity-50 transition-opacity group-hover:opacity-100" />
+              </Button>
+            )}
+            {!onSync && onConnect && (
+              <Button
+                variant="secondary"
+                className="w-full justify-between group-hover:border-slate-600"
+                onClick={onConnect}
+                disabled={syncing}
+              >
+                {syncing ? workingLabel : reconnectLabel}
+                <ChevronRight className="h-4 w-4 text-slate-500 opacity-50 transition-opacity group-hover:opacity-100" />
+              </Button>
+            )}
             <Button
               variant="secondary"
               className="w-full justify-between border border-slate-800 bg-slate-950/70 text-slate-300 hover:bg-slate-900"
@@ -268,7 +312,7 @@ export default function SourceCard({
             )}
             onClick={onConnect}
           >
-            {syncing ? "Working..." : connectLabel}
+            {syncing ? workingLabel : connectLabel}
             <ChevronRight className="h-4 w-4 opacity-50 text-current" />
           </Button>
         )}

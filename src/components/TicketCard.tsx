@@ -56,6 +56,11 @@ export default function TicketCard({
             <span className={`text-xs font-medium uppercase tracking-[0.18em] ${priorityTone[ticket.priority]}`}>
               {ticket.priority}
             </span>
+            {ticket.createdByAgent && (
+              <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1 text-xs font-medium text-cyan-200">
+                Created by Agent
+              </span>
+            )}
           </div>
           <h3 className="mt-3 text-lg font-semibold text-white">{ticket.title}</h3>
           <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-slate-400">

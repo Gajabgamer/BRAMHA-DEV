@@ -5,12 +5,24 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
 const GMAIL_MESSAGES_URL =
   'https://gmail.googleapis.com/gmail/v1/users/me/messages';
+const GOOGLE_CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
 
 const GMAIL_SCOPES = [
   'openid',
   'email',
   'profile',
   'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.send',
+];
+const GOOGLE_WORKSPACE_SCOPES = [
+  ...GMAIL_SCOPES,
+  GOOGLE_CALENDAR_SCOPE,
+];
+const GOOGLE_CALENDAR_SCOPES = [
+  'openid',
+  'email',
+  'profile',
+  ...GOOGLE_WORKSPACE_SCOPES.filter((scope, index, scopes) => scopes.indexOf(scope) === index),
 ];
 
 function getRequiredEnv(name) {
@@ -25,6 +37,14 @@ function getRedirectUri() {
   return (
     process.env.GMAIL_REDIRECT_URI ||
     'http://localhost:8000/api/integrations/gmail/callback'
+  );
+}
+
+function getCalendarRedirectUri() {
+  return (
+    process.env.GOOGLE_CALENDAR_REDIRECT_URI ||
+    process.env.GMAIL_REDIRECT_URI ||
+    'http://localhost:8000/api/integrations/google-calendar/callback'
   );
 }
 
@@ -76,8 +96,23 @@ function verifyState(token) {
 }
 
 function createGmailAuthUrl({ userId }) {
+  return createGoogleAuthUrl({
+    userId,
+    redirectUri: getRedirectUri(),
+    scopes: GOOGLE_WORKSPACE_SCOPES,
+  });
+}
+
+function createGoogleCalendarAuthUrl({ userId }) {
+  return createGoogleAuthUrl({
+    userId,
+    redirectUri: getCalendarRedirectUri(),
+    scopes: GOOGLE_CALENDAR_SCOPES,
+  });
+}
+
+function createGoogleAuthUrl({ userId, redirectUri, scopes }) {
   const clientId = getRequiredEnv('GOOGLE_CLIENT_ID');
-  const redirectUri = getRedirectUri();
   const state = signState({
     userId,
     redirectTo: process.env.APP_URL || 'http://localhost:3000/dashboard/connect',
@@ -91,7 +126,7 @@ function createGmailAuthUrl({ userId }) {
     access_type: 'offline',
     prompt: 'consent',
     include_granted_scopes: 'true',
-    scope: GMAIL_SCOPES.join(' '),
+    scope: scopes.join(' '),
     state,
   });
 
@@ -99,6 +134,14 @@ function createGmailAuthUrl({ userId }) {
 }
 
 async function exchangeCodeForTokens(code) {
+  return exchangeCodeForTokensWithRedirect(code, getRedirectUri());
+}
+
+async function exchangeCalendarCodeForTokens(code) {
+  return exchangeCodeForTokensWithRedirect(code, getCalendarRedirectUri());
+}
+
+async function exchangeCodeForTokensWithRedirect(code, redirectUri) {
   const response = await fetch(GOOGLE_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -106,7 +149,7 @@ async function exchangeCodeForTokens(code) {
       code,
       client_id: getRequiredEnv('GOOGLE_CLIENT_ID'),
       client_secret: getRequiredEnv('GOOGLE_CLIENT_SECRET'),
-      redirect_uri: getRedirectUri(),
+      redirect_uri: redirectUri,
       grant_type: 'authorization_code',
     }),
   });
@@ -182,6 +225,45 @@ function extractHeader(headers, name) {
   return headers?.find((header) => header.name?.toLowerCase() === name.toLowerCase())?.value;
 }
 
+function parseSender(value) {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) {
+    return {
+      author: 'Unknown sender',
+      senderEmail: null,
+      senderName: null,
+    };
+  }
+
+  const angleMatch = rawValue.match(/^(.*?)(?:<([^>]+)>)$/);
+  if (angleMatch) {
+    const senderName = angleMatch[1].trim().replace(/^"|"$/g, '') || null;
+    const senderEmail = angleMatch[2].trim().toLowerCase() || null;
+    return {
+      author: senderName ? `${senderName} <${senderEmail}>` : senderEmail,
+      senderEmail,
+      senderName,
+    };
+  }
+
+  const emailMatch = rawValue.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  if (emailMatch) {
+    const senderEmail = emailMatch[0].trim().toLowerCase();
+    const senderName = rawValue.replace(emailMatch[0], '').replace(/[<>()"]/g, '').trim() || null;
+    return {
+      author: senderName ? `${senderName} <${senderEmail}>` : senderEmail,
+      senderEmail,
+      senderName,
+    };
+  }
+
+  return {
+    author: rawValue,
+    senderEmail: null,
+    senderName: rawValue,
+  };
+}
+
 async function getMessageDetail(accessToken, messageId) {
   const response = await fetch(
     `${GMAIL_MESSAGES_URL}/${messageId}?format=full`,
@@ -203,13 +285,19 @@ async function getMessageDetail(accessToken, messageId) {
   const bodyText = plainPart?.body?.data
     ? decodeBase64Url(plainPart.body.data)
     : data.snippet || '';
+  const fromHeader = extractHeader(headers, 'from');
+  const replyToHeader = extractHeader(headers, 'reply-to');
+  const sender = parseSender(replyToHeader || fromHeader);
 
   return {
     externalId: data.id,
     threadId: data.threadId,
     title: extractHeader(headers, 'subject') || 'Gmail feedback',
     body: bodyText.trim() || data.snippet || 'No body available.',
-    author: extractHeader(headers, 'from') || 'Unknown sender',
+    author: sender.author,
+    senderEmail: sender.senderEmail,
+    senderName: sender.senderName,
+    messageIdHeader: extractHeader(headers, 'message-id') || null,
     occurredAt: extractHeader(headers, 'date')
       ? new Date(extractHeader(headers, 'date')).toISOString()
       : new Date(Number(data.internalDate || Date.now())).toISOString(),
@@ -231,12 +319,16 @@ async function getMessagePreview(accessToken, messageId) {
   }
 
   const headers = data.payload?.headers ?? [];
+  const fromHeader = extractHeader(headers, 'from');
+  const sender = parseSender(fromHeader);
 
   return {
     externalId: data.id,
     threadId: data.threadId,
     title: extractHeader(headers, 'subject') || 'Gmail feedback',
-    author: extractHeader(headers, 'from') || 'Unknown sender',
+    author: sender.author,
+    senderEmail: sender.senderEmail,
+    senderName: sender.senderName,
     snippet: data.snippet || '',
     occurredAt: extractHeader(headers, 'date')
       ? new Date(extractHeader(headers, 'date')).toISOString()
@@ -245,7 +337,9 @@ async function getMessagePreview(accessToken, messageId) {
 }
 
 module.exports = {
+  createGoogleCalendarAuthUrl,
   createGmailAuthUrl,
+  exchangeCalendarCodeForTokens,
   exchangeCodeForTokens,
   fetchGoogleProfile,
   getMessageDetail,

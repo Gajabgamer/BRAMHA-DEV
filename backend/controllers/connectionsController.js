@@ -2,7 +2,9 @@ const supabase = require('../lib/supabaseClient');
 const { fetchAppleReviews } = require('../lib/appReviews');
 const { fetchPlayReviews } = require('../services/reviewService');
 const {
+  createGoogleCalendarAuthUrl,
   createGmailAuthUrl,
+  exchangeCalendarCodeForTokens,
   exchangeCodeForTokens,
   fetchGoogleProfile,
   getMessageDetail,
@@ -22,7 +24,11 @@ const {
 } = require('../lib/outlook');
 const { detectSentiment, rebuildIssuesFromFeedback } = require('../lib/issueAggregator');
 const { classifyFeedbackEvents } = require('../lib/groqFeedbackClassifier');
+const { insertFeedbackEventsDeduped } = require('../lib/feedbackDedup');
 const { extractLocation } = require('../services/locationService');
+const { ensureUserRecords } = require('../lib/ensureUserRecords');
+const { runAgent } = require('../services/agentService');
+const { ensureCalendarAccessToken } = require('../services/calendarService');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
@@ -37,8 +43,55 @@ function sanitizeConnectionMetadata(provider, metadata = {}) {
   return nextMetadata;
 }
 
+async function ensureGoogleWorkspaceMirror(userId) {
+  const { data, error } = await supabase
+    .from('connected_accounts')
+    .select('*')
+    .eq('user_id', userId)
+    .in('provider', ['gmail', 'google_calendar']);
+
+  if (error) throw error;
+
+  const rows = data || [];
+  const gmailConnection = rows.find((entry) => entry.provider === 'gmail');
+  const calendarConnection = rows.find(
+    (entry) => entry.provider === 'google_calendar'
+  );
+
+  if (gmailConnection && !calendarConnection) {
+    await upsertConnection(userId, 'google_calendar', {
+      access_token: gmailConnection.access_token,
+      refresh_token: gmailConnection.refresh_token,
+      status: gmailConnection.status || 'connected',
+      metadata: {
+        ...(gmailConnection.metadata || {}),
+        expiry: gmailConnection.expiry || gmailConnection.metadata?.expiry || null,
+        lastSyncedAt: gmailConnection.metadata?.lastSyncedAt || null,
+      },
+      last_error: gmailConnection.last_error || null,
+      last_synced_at: gmailConnection.last_synced_at || null,
+      expiry: gmailConnection.expiry || gmailConnection.metadata?.expiry || null,
+    });
+  } else if (!gmailConnection && calendarConnection) {
+    await upsertConnection(userId, 'gmail', {
+      access_token: calendarConnection.access_token,
+      refresh_token: calendarConnection.refresh_token,
+      status: calendarConnection.status || 'connected',
+      metadata: {
+        ...(calendarConnection.metadata || {}),
+        lastSyncedAt: calendarConnection.metadata?.lastSyncedAt || null,
+      },
+      last_error: calendarConnection.last_error || null,
+      last_synced_at: calendarConnection.last_synced_at || null,
+      expiry: calendarConnection.expiry || null,
+    });
+  }
+}
+
 async function getConnections(req, res) {
   try {
+    await ensureGoogleWorkspaceMirror(req.user.id);
+
     const { data, error } = await supabase
       .from('connected_accounts')
       .select('*')
@@ -55,6 +108,7 @@ async function getConnections(req, res) {
         last_synced_at:
           connection.last_synced_at ?? connection.metadata?.lastSyncedAt ?? null,
         last_error: connection.last_error ?? null,
+        expiry: connection.expiry ?? connection.metadata?.expiry ?? null,
       }))
     );
   } catch (err) {
@@ -80,6 +134,54 @@ async function startOutlookOAuth(req, res) {
   }
 }
 
+async function startGoogleCalendarOAuth(req, res) {
+  try {
+    const authUrl = createGoogleCalendarAuthUrl({ userId: req.user.id });
+    res.json({ authUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+async function getGoogleCalendarStatus(req, res) {
+  try {
+    const { data, error } = await supabase
+      .from('connected_accounts')
+      .select('metadata, status, last_synced_at, expiry, last_error')
+      .eq('user_id', req.user.id)
+      .in('provider', ['google_calendar', 'gmail']);
+
+    if (error) throw error;
+
+    const calendarConnection = (data ?? []).find(
+      (entry) => entry.provider === 'google_calendar'
+    );
+    const gmailConnection = (data ?? []).find((entry) => entry.provider === 'gmail');
+    const effectiveConnection = calendarConnection || gmailConnection;
+
+    if (!effectiveConnection) {
+      return res.json({
+        connected: false,
+        email: null,
+        lastSyncedAt: null,
+      });
+    }
+
+    return res.json({
+      connected: true,
+      email: effectiveConnection.metadata?.email || null,
+      lastSyncedAt:
+        calendarConnection?.last_synced_at ??
+        calendarConnection?.metadata?.lastSyncedAt ??
+        gmailConnection?.last_synced_at ??
+        gmailConnection?.metadata?.lastSyncedAt ??
+        null,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+}
+
 async function upsertConnection(userId, provider, payload) {
   const { data, error } = await supabase
     .from('connected_accounts')
@@ -93,6 +195,7 @@ async function upsertConnection(userId, provider, payload) {
         status: payload.status || 'connected',
         last_synced_at: payload.last_synced_at || null,
         last_error: payload.last_error || null,
+        expiry: payload.expiry || null,
       },
       { onConflict: 'user_id, provider' }
     )
@@ -101,6 +204,46 @@ async function upsertConnection(userId, provider, payload) {
 
   if (error) throw error;
   return data;
+}
+
+async function upsertGoogleWorkspaceConnections(userId, profile, tokens, options = {}) {
+  const connectedAt = new Date().toISOString();
+  const expiry = tokens.expires_in
+    ? new Date(Date.now() + Number(tokens.expires_in) * 1000).toISOString()
+    : null;
+  const sharedMetadata = {
+    accountName: profile.email,
+    email: profile.email,
+    name: profile.name || '',
+    picture: profile.picture || '',
+    connectedAt,
+  };
+
+  await upsertConnection(userId, 'gmail', {
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    status: 'connected',
+    metadata: {
+      ...sharedMetadata,
+      lastSyncedAt: options.gmailLastSyncedAt || null,
+    },
+    last_error: null,
+    last_synced_at: options.gmailLastSyncedAt || null,
+  });
+
+  await upsertConnection(userId, 'google_calendar', {
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    status: 'connected',
+    metadata: {
+      ...sharedMetadata,
+      expiry,
+      lastSyncedAt: options.calendarLastSyncedAt || null,
+    },
+    last_error: null,
+    last_synced_at: options.calendarLastSyncedAt || null,
+    expiry,
+  });
 }
 
 async function gmailOAuthCallback(req, res) {
@@ -127,23 +270,11 @@ async function gmailOAuthCallback(req, res) {
     const tokens = await exchangeCodeForTokens(String(code));
     const profile = await fetchGoogleProfile(tokens.access_token);
 
-    await upsertConnection(oauthState.userId, 'gmail', {
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      status: 'connected',
-      metadata: {
-        accountName: profile.email,
-        email: profile.email,
-        name: profile.name || '',
-        picture: profile.picture || '',
-        connectedAt: new Date().toISOString(),
-        lastSyncedAt: null,
-      },
-    });
+    await upsertGoogleWorkspaceConnections(oauthState.userId, profile, tokens);
 
     return res.redirect(
       `${oauthState.redirectTo}?gmail=connected&message=${encodeURIComponent(
-        `Connected ${profile.email}`
+        `Connected Gmail and Google Calendar for ${profile.email}`
       )}`
     );
   } catch (err) {
@@ -208,6 +339,44 @@ async function outlookOAuthCallback(req, res) {
   }
 }
 
+async function googleCalendarOAuthCallback(req, res) {
+  try {
+    const { code, state, error } = req.query;
+
+    if (error) {
+      return res.redirect(
+        `${APP_URL}/dashboard/connect?error=calendar&message=${encodeURIComponent(
+          String(error)
+        )}`
+      );
+    }
+
+    if (!code || !state) {
+      return res.redirect(
+        `${APP_URL}/dashboard/connect?error=calendar&message=${encodeURIComponent(
+          'Missing Google Calendar OAuth code or state.'
+        )}`
+      );
+    }
+
+    const oauthState = verifyState(state);
+    const tokens = await exchangeCalendarCodeForTokens(String(code));
+    const profile = await fetchGoogleProfile(tokens.access_token);
+
+    await upsertGoogleWorkspaceConnections(oauthState.userId, profile, tokens);
+
+    return res.redirect(
+      `${oauthState.redirectTo}?success=calendar`
+    );
+  } catch (err) {
+    return res.redirect(
+      `${APP_URL}/dashboard/connect?error=calendar&message=${encodeURIComponent(
+        err.message || 'Failed to connect Google Calendar.'
+      )}`
+    );
+  }
+}
+
 async function connectProvider(req, res) {
   try {
     const { provider } = req.params;
@@ -231,9 +400,16 @@ async function connectProvider(req, res) {
 
 async function syncConnection(req, res) {
   try {
-    const { provider } = req.params;
+    const requestedProvider = req.params.provider;
+    const provider =
+      requestedProvider === 'google-calendar'
+        ? 'google_calendar'
+        : requestedProvider;
+    const requestedAppId = String(req.body?.appId || '').trim();
 
-    const { data: connection, error } = await supabase
+    await ensureUserRecords(req.user);
+
+    const { data: initialConnection, error } = await supabase
       .from('connected_accounts')
       .select('*')
       .eq('user_id', req.user.id)
@@ -241,12 +417,44 @@ async function syncConnection(req, res) {
       .maybeSingle();
 
     if (error) throw error;
+
+    let connection = initialConnection;
+
+    if (!connection && (provider === 'google_calendar' || provider === 'gmail')) {
+      const counterpartProvider =
+        provider === 'google_calendar' ? 'gmail' : 'google_calendar';
+      const { data: counterpartConnection, error: counterpartError } = await supabase
+        .from('connected_accounts')
+        .select('*')
+        .eq('user_id', req.user.id)
+        .eq('provider', counterpartProvider)
+        .maybeSingle();
+
+      if (counterpartError) throw counterpartError;
+
+      if (counterpartConnection) {
+        connection = await upsertConnection(req.user.id, provider, {
+          access_token: counterpartConnection.access_token,
+          refresh_token: counterpartConnection.refresh_token,
+          status: counterpartConnection.status || 'connected',
+          metadata: {
+            ...(counterpartConnection.metadata || {}),
+            lastSyncedAt: counterpartConnection.metadata?.lastSyncedAt || null,
+          },
+          last_error: null,
+          last_synced_at: counterpartConnection.last_synced_at || null,
+          expiry: counterpartConnection.expiry || null,
+        });
+      }
+    }
+
     if (!connection) {
       return res.status(404).json({ error: `Connect ${provider} before syncing.` });
     }
 
     let rows = [];
-    let skipped = 0;
+    let filteredOut = 0;
+    let duplicatesSkipped = 0;
     let updatePayload = {
       status: 'connected',
       last_error: null,
@@ -296,7 +504,7 @@ async function syncConnection(req, res) {
         details.push(detail);
       }
 
-      skipped = previews.length - details.length;
+      filteredOut = previews.length - details.length;
 
       rows = details.flatMap((detail) => {
         const classification = classificationById.get(detail.externalId);
@@ -316,6 +524,7 @@ async function syncConnection(req, res) {
             url: detail.url,
             occurred_at: detail.occurredAt,
             sentiment: classification.sentiment || detectSentiment(`${detail.title} ${detail.body}`),
+            replied: false,
             location: extractLocation({
               source: 'gmail',
               title: detail.title,
@@ -327,6 +536,10 @@ async function syncConnection(req, res) {
             }),
             metadata: {
               threadId: detail.threadId,
+              senderEmail: detail.senderEmail,
+              senderName: detail.senderName,
+              originalSubject: detail.title,
+              messageIdHeader: detail.messageIdHeader,
               classificationReason: classification.reason,
               groqSentiment: classification.sentiment || 'neutral',
               isProductFeedback: true,
@@ -334,12 +547,6 @@ async function syncConnection(req, res) {
           },
         ];
       });
-
-      await supabase
-        .from('feedback_events')
-        .delete()
-        .eq('user_id', req.user.id)
-        .eq('source', 'gmail');
 
       updatePayload.access_token = accessToken;
     } else if (provider === 'outlook') {
@@ -380,7 +587,7 @@ async function syncConnection(req, res) {
         details.push(detail);
       }
 
-      skipped = previews.length - details.length;
+      filteredOut = previews.length - details.length;
 
       rows = details.flatMap((detail) => {
         const classification = classificationById.get(detail.externalId);
@@ -420,15 +627,9 @@ async function syncConnection(req, res) {
         ];
       });
 
-      await supabase
-        .from('feedback_events')
-        .delete()
-        .eq('user_id', req.user.id)
-        .eq('source', 'outlook');
-
       updatePayload.access_token = accessToken;
     } else if (provider === 'app-reviews') {
-      const appId = connection.metadata?.appId;
+      const appId = requestedAppId || connection.metadata?.appId;
       if (!appId) {
         return res.status(400).json({ error: 'App ID is required to sync app reviews.' });
       }
@@ -469,13 +670,8 @@ async function syncConnection(req, res) {
         },
       }));
 
-      await supabase
-        .from('feedback_events')
-        .delete()
-        .eq('user_id', req.user.id)
-        .eq('source', 'app-reviews');
     } else if (provider === 'google-play') {
-      const appId = connection.metadata?.appId;
+      const appId = requestedAppId || connection.metadata?.appId;
       if (!appId) {
         return res.status(400).json({ error: 'App ID is required to sync Google Play reviews.' });
       }
@@ -520,31 +716,50 @@ async function syncConnection(req, res) {
         },
       }));
 
-      await supabase
-        .from('feedback_events')
-        .delete()
-        .eq('user_id', req.user.id)
-        .eq('source', 'google-play');
+    } else if (provider === 'google_calendar') {
+      const refreshedConnection = await ensureCalendarAccessToken(req.user.id);
+
+      if (!refreshedConnection) {
+        return res
+          .status(404)
+          .json({ error: 'Connect Google Calendar before syncing.' });
+      }
+
+      rows = [];
+      updatePayload = {
+        ...updatePayload,
+        access_token: refreshedConnection.access_token,
+        refresh_token: refreshedConnection.refresh_token || connection.refresh_token,
+        expiry: refreshedConnection.expiry || null,
+      };
+
     } else {
       return res.status(400).json({ error: `Sync is not implemented for ${provider} yet.` });
     }
 
-    if (rows.length > 0) {
-      const { error: insertError } = await supabase.from('feedback_events').upsert(rows, {
-        onConflict: 'user_id, source, external_id',
+    const insertResult =
+      rows.length > 0
+        ? await insertFeedbackEventsDeduped(req.user.id, rows, {
+            logLabel: provider,
+          })
+        : { fetched: 0, inserted: 0, duplicatesSkipped: 0 };
+    duplicatesSkipped = insertResult.duplicatesSkipped;
+
+    if (rows.length > 0 && insertResult.inserted > 0) {
+      await rebuildIssuesFromFeedback(req.user.id);
+      await runAgent(req.user, {
+        newFeedbackRows: insertResult.rows,
       });
-
-      if (insertError) throw insertError;
     }
-
-    await rebuildIssuesFromFeedback(req.user.id);
 
     const lastSyncedAt = new Date().toISOString();
     const nextMetadata = {
       ...(connection.metadata || {}),
+      ...(requestedAppId ? { appId: requestedAppId } : {}),
       lastSyncedAt,
-      syncedCount: rows.length,
-      skippedCount: skipped,
+      syncedCount: insertResult.inserted,
+      skippedCount: filteredOut + duplicatesSkipped,
+      duplicatesSkipped,
     };
 
     await supabase
@@ -559,13 +774,19 @@ async function syncConnection(req, res) {
     res.json({
       success: true,
       provider,
-      imported: rows.length,
-      skipped,
+      fetched: rows.length,
+      imported: insertResult.inserted,
+      skipped: filteredOut + duplicatesSkipped,
+      duplicatesSkipped,
       lastSyncedAt,
     });
   } catch (err) {
     if (req.params?.provider && req.user?.id) {
       try {
+        const provider =
+          req.params.provider === 'google-calendar'
+            ? 'google_calendar'
+            : req.params.provider;
         await supabase
           .from('connected_accounts')
           .update({
@@ -573,7 +794,7 @@ async function syncConnection(req, res) {
             last_error: err instanceof Error ? err.message : 'Sync failed.',
           })
           .eq('user_id', req.user.id)
-          .eq('provider', req.params.provider);
+          .eq('provider', provider);
       } catch {
         // Best-effort logging for hackathon speed.
       }
@@ -585,11 +806,30 @@ async function syncConnection(req, res) {
 async function disconnectProvider(req, res) {
   try {
     const { id } = req.params;
-    const { error } = await supabase
+    const { data: connection, error: lookupError } = await supabase
+      .from('connected_accounts')
+      .select('id, provider')
+      .eq('id', id)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (lookupError) throw lookupError;
+    if (!connection) {
+      return res.status(404).json({ error: 'Connection not found.' });
+    }
+
+    let deleteQuery = supabase
       .from('connected_accounts')
       .delete()
-      .eq('id', id)
       .eq('user_id', req.user.id);
+
+    if (connection.provider === 'gmail' || connection.provider === 'google_calendar') {
+      deleteQuery = deleteQuery.in('provider', ['gmail', 'google_calendar']);
+    } else {
+      deleteQuery = deleteQuery.eq('id', id);
+    }
+
+    const { error } = await deleteQuery;
 
     if (error) throw error;
     res.json({ success: true });
@@ -646,6 +886,7 @@ async function updateConnection(req, res) {
       status: data.status ?? 'connected',
       last_synced_at: data.last_synced_at ?? data.metadata?.lastSyncedAt ?? null,
       last_error: data.last_error ?? null,
+      expiry: data.expiry ?? data.metadata?.expiry ?? null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -656,8 +897,11 @@ module.exports = {
   connectProvider,
   disconnectProvider,
   getConnections,
+  getGoogleCalendarStatus,
   gmailOAuthCallback,
+  googleCalendarOAuthCallback,
   outlookOAuthCallback,
+  startGoogleCalendarOAuth,
   startGmailOAuth,
   startOutlookOAuth,
   syncConnection,

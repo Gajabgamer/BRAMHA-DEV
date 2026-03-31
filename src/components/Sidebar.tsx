@@ -10,21 +10,25 @@ import {
   History,
   Package,
   Settings,
+  Sparkles,
   LogOut,
   Activity,
   PanelLeftClose,
   PanelLeftOpen,
+  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/providers/AuthProvider";
 import SidebarAlerts from "@/components/SidebarAlerts";
 import { useStoredBoolean, writeStoredBoolean } from "@/lib/useStoredBoolean";
+import { useGuide } from "@/providers/GuideProvider";
 
 const navItems = [
   { href: "/dashboard", label: "Control Room", icon: LayoutDashboard },
   { href: "/dashboard/connect", label: "Data Sources", icon: Cable },
   { href: "/dashboard/tickets", label: "Tickets", icon: Ticket },
   { href: "/dashboard/timeline", label: "Timeline", icon: History },
+  { href: "/dashboard/agent-activity", label: "Agent Activity", icon: Sparkles },
   { href: "/dashboard/sdk", label: "SDK Integration", icon: Package },
   { href: "/dashboard/ai-helper", label: "AI Helper", icon: Bot },
 ];
@@ -33,6 +37,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { signOut } = useAuth();
+  const { openGuide } = useGuide();
   const expanded = useStoredBoolean("product-pulse-sidebar-expanded", true);
 
   const toggleSidebar = () => {
@@ -114,6 +119,18 @@ export default function Sidebar() {
       </div>
 
       <div className="mb-4 space-y-2">
+        <button
+          type="button"
+          onClick={() => openGuide()}
+          className="flex w-full items-center justify-center gap-3 rounded-xl px-3 py-3 text-slate-400 transition-all hover:bg-slate-800/50 hover:text-slate-100 lg:justify-start lg:px-4 lg:py-2.5"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-800 bg-slate-900/80">
+            <Info className="h-4 w-4" />
+          </span>
+          <span className={cn("text-left", expanded ? "hidden lg:block" : "hidden")}>
+            Product Guide
+          </span>
+        </button>
         <button
           type="button"
           onClick={() => router.push("/dashboard/profile")}

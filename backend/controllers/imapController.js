@@ -1,9 +1,11 @@
 const supabase = require('../lib/supabaseClient');
 const { encryptSecret } = require('../lib/credentialCipher');
+const { insertFeedbackEventsDeduped } = require('../lib/feedbackDedup');
 const { detectSentiment, rebuildIssuesFromFeedback } = require('../lib/issueAggregator');
 const { classifyFeedbackEvents } = require('../lib/groqFeedbackClassifier');
 const { connectIMAP, fetchEmails, MAX_EMAILS_PER_SYNC } = require('../services/imapService');
 const { extractLocation } = require('../services/locationService');
+const { runAgent } = require('../services/agentService');
 
 function getErrorMessage(error, fallback) {
   if (error instanceof Error && error.message) {
@@ -252,17 +254,15 @@ async function syncImapAccount(req, res) {
       ];
     });
 
-    const skipped = rawEmails.length - rows.length;
+    const filteredOut = rawEmails.length - rows.length;
+    const insertResult = await insertFeedbackEventsDeduped(req.user.id, rows, {
+      logLabel: 'imap',
+    });
 
-    if (rows.length > 0) {
-      const { error: insertError } = await supabase.from('feedback_events').upsert(rows, {
-        onConflict: 'user_id, source, external_id',
-      });
-
-      if (insertError) throw insertError;
+    if (insertResult.inserted > 0) {
+      await rebuildIssuesFromFeedback(req.user.id);
+      await runAgent(req.user);
     }
-
-    await rebuildIssuesFromFeedback(req.user.id);
 
     const lastSyncedAt = new Date().toISOString();
     await supabase
@@ -271,8 +271,9 @@ async function syncImapAccount(req, res) {
         metadata: {
           ...(connection.metadata || {}),
           lastSyncedAt,
-          syncedCount: rows.length,
-          skippedCount: skipped,
+          syncedCount: insertResult.inserted,
+          skippedCount: filteredOut + insertResult.duplicatesSkipped,
+          duplicatesSkipped: insertResult.duplicatesSkipped,
         },
         last_synced_at: lastSyncedAt,
         status: 'connected',
@@ -283,8 +284,10 @@ async function syncImapAccount(req, res) {
     res.json({
       success: true,
       provider: 'imap',
-      imported: rows.length,
-      skipped,
+      fetched: rawEmails.length,
+      imported: insertResult.inserted,
+      skipped: filteredOut + insertResult.duplicatesSkipped,
+      duplicatesSkipped: insertResult.duplicatesSkipped,
       lastSyncedAt,
     });
   } catch (err) {

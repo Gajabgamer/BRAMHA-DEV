@@ -76,6 +76,8 @@ function buildTrackSnippet() {
 
 function buildFeedbackSnippet() {
   return `ProductPulse.feedback({
+  name: "Alex",
+  email: "alex@example.com",
   message: "Something is broken"
 });`;
 }
@@ -168,6 +170,8 @@ export default function SdkPage() {
   const [revealed, setRevealed] = useState(false);
   const [copiedTarget, setCopiedTarget] = useState<CopyTarget | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewName, setPreviewName] = useState("");
+  const [previewEmail, setPreviewEmail] = useState("");
   const [previewMessage, setPreviewMessage] = useState("");
   const [previewSubmitting, setPreviewSubmitting] = useState(false);
   const [previewStatus, setPreviewStatus] = useState("");
@@ -296,6 +300,11 @@ export default function SdkPage() {
       return;
     }
 
+    if (previewEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(previewEmail.trim())) {
+      setPreviewStatus("Enter a valid email address before submitting.");
+      return;
+    }
+
     if (!sdkApiKey) {
       setPreviewStatus("Generate your SDK key first to test the preview.");
       return;
@@ -312,6 +321,8 @@ export default function SdkPage() {
           "X-Product-Pulse-Key": sdkApiKey,
         },
         body: JSON.stringify({
+          name: previewName.trim(),
+          email: previewEmail.trim(),
           message: previewMessage.trim(),
           url: domain ? `https://${domain}` : "https://preview.productpulse.dev",
           userAgent: "Product Pulse SDK Preview",
@@ -324,6 +335,8 @@ export default function SdkPage() {
         throw new Error(payload.error || "Preview request failed.");
       }
 
+      setPreviewName("");
+      setPreviewEmail("");
       setPreviewMessage("");
       setPreviewStatus("Feedback sent to dashboard");
       setToast("Feedback sent to dashboard");
@@ -689,11 +702,11 @@ export default function SdkPage() {
                 <span className="h-3 w-3 rounded-full bg-amber-300/80" />
                 <span className="h-3 w-3 rounded-full bg-emerald-400/80" />
               </div>
-              <div className="space-y-3">
-                <div className="h-4 w-28 rounded-full bg-slate-800" />
-                <div className="h-10 w-3/4 rounded-2xl bg-slate-900/90" />
-                <div className="h-24 rounded-3xl border border-slate-800 bg-slate-950/80" />
-              </div>
+                  <div className="space-y-3">
+                    <div className="h-4 w-28 rounded-full bg-slate-800" />
+                    <div className="h-10 w-3/4 rounded-2xl bg-slate-900/90" />
+                    <div className="h-24 rounded-3xl border border-slate-800 bg-slate-950/80" />
+                  </div>
 
               <motion.button
                 type="button"
@@ -721,7 +734,7 @@ export default function SdkPage() {
                     <div>
                       <h3 className="text-base font-semibold text-white">Share feedback</h3>
                       <p className="mt-1 text-sm text-slate-400">
-                        Send a real preview submission into your Product Pulse dashboard.
+                        Send a real preview submission into your Product Pulse dashboard with contact details.
                       </p>
                     </div>
                     <button
@@ -730,6 +743,8 @@ export default function SdkPage() {
                       onClick={() => {
                         setPreviewOpen(false);
                         setPreviewStatus("");
+                        setPreviewName("");
+                        setPreviewEmail("");
                         setPreviewMessage("");
                       }}
                     >
@@ -737,17 +752,48 @@ export default function SdkPage() {
                     </button>
                   </div>
 
-                  <textarea
-                    value={previewMessage}
-                    onChange={(event) => setPreviewMessage(event.target.value)}
-                    placeholder="What went wrong, what felt confusing, or what should improve?"
-                    className="mt-4 min-h-[110px] w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-indigo-500/60"
-                  />
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-2">
+                      <span className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+                        Name
+                      </span>
+                      <Input
+                        value={previewName}
+                        onChange={(event) => setPreviewName(event.target.value)}
+                        placeholder="Alex Johnson"
+                        className="h-11 rounded-2xl border-slate-800 bg-slate-900 px-4 text-sm text-slate-100 placeholder:text-slate-500"
+                      />
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+                        Email
+                      </span>
+                      <Input
+                        value={previewEmail}
+                        onChange={(event) => setPreviewEmail(event.target.value)}
+                        placeholder="alex@example.com"
+                        type="email"
+                        className="h-11 rounded-2xl border-slate-800 bg-slate-900 px-4 text-sm text-slate-100 placeholder:text-slate-500"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="mt-4 block space-y-2">
+                    <span className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+                      Feedback
+                    </span>
+                    <textarea
+                      value={previewMessage}
+                      onChange={(event) => setPreviewMessage(event.target.value)}
+                      placeholder="Tell us what happened, what felt confusing, or what should improve."
+                      className="min-h-[128px] w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm leading-6 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-indigo-500/60"
+                    />
+                  </label>
 
                   <div className="mt-4 flex items-center justify-between gap-4">
-                    <p className="text-xs text-slate-500">
+                    <p className="max-w-xs text-xs leading-5 text-slate-500">
                       {sdkApiKey
-                        ? "Submitted feedback is written into feedback_events and appears in your dashboard."
+                        ? "Submitted feedback is written into feedback_events, can trigger an acknowledgment email, and appears in your dashboard."
                         : "Generate your SDK key first to test a real submission."}
                     </p>
                     <Button

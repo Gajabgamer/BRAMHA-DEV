@@ -14,7 +14,9 @@ import { Button } from "@/components/ui/button";
 import { useIssues } from "@/providers/IssuesProvider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboardLive } from "@/providers/DashboardLiveProvider";
+import { useAgent } from "@/providers/AgentProvider";
 import { useAuth } from "@/providers/AuthProvider";
+import { useNotifications } from "@/providers/NotificationsProvider";
 import { isDemoUser } from "@/lib/demo-mode";
 
 type PriorityFilter = "all" | "HIGH" | "MEDIUM" | "LOW";
@@ -24,12 +26,15 @@ type TrendFilter = "all" | "increasing" | "stable" | "decreasing";
 export default function DashboardPage() {
   const { loading, error } = useIssues();
   const { liveIssues, criticalAlerts } = useDashboardLive();
+  const { status: agentStatus } = useAgent();
   const { user } = useAuth();
+  const { permission, requestPermission } = useNotifications();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [notificationPromptDismissed, setNotificationPromptDismissed] = useState(false);
   const categoryFilter = useMemo(() => {
     const value = searchParams.get("category");
     return value === "Bug" ||
@@ -59,6 +64,8 @@ export default function DashboardPage() {
   }, [searchParams]);
   const demoModeActive = isDemoUser(user?.email ?? null);
   const hasLiveSignals = liveIssues.length > 0;
+  const showNotificationBanner =
+    permission === "default" && !notificationPromptDismissed;
 
   const updateFilterParam = (
     key: "priority" | "source" | "trend",
@@ -155,10 +162,48 @@ export default function DashboardPage() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
             </span>
-            Listening globally
+            {agentStatus.enabled ? "Listening to feedback..." : "Autonomous actions paused"}
           </div>
         </div>
       </div>
+
+      {showNotificationBanner && (
+        <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-indigo-500/20 bg-indigo-500/10 px-5 py-4 text-sm text-indigo-100 shadow-[0_12px_40px_rgba(79,70,229,0.14)] md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-semibold text-indigo-200">
+              Enable notifications to get real-time alerts from your AI agent
+            </p>
+            <p className="mt-1 text-indigo-100/80">
+              Product Pulse can notify you when the agent detects spikes, creates tickets, or schedules follow-ups.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              className="bg-white text-indigo-700 hover:bg-indigo-50"
+              onClick={() => void requestPermission()}
+            >
+              Enable Notifications
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-indigo-100 hover:bg-indigo-500/10 hover:text-white"
+              onClick={() => setNotificationPromptDismissed(true)}
+            >
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {agentStatus.latestBanner && (
+        <div className="mb-8 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-5 py-4 text-sm text-cyan-100 shadow-[0_12px_40px_rgba(8,145,178,0.12)]">
+          <span className="font-semibold text-cyan-200">Created by Agent:</span>{" "}
+          {agentStatus.latestBanner}
+        </div>
+      )}
 
       {showFilters && (
         <div className="mb-8 rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-[0_12px_40px_rgba(15,23,42,0.18)]">

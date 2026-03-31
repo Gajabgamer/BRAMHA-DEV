@@ -12,6 +12,7 @@ import { getImapConfig } from "@/lib/imapConfig";
 type ProviderKey =
   | "gmail"
   | "outlook"
+  | "google-calendar"
   | "instagram"
   | "app-reviews"
   | "google-play"
@@ -19,6 +20,13 @@ type ProviderKey =
   | "reddit"
   | "social-search";
 type ConnectedProviderKey = Exclude<ProviderKey, "reddit" | "social-search">;
+type SyncableProviderKey =
+  | "gmail"
+  | "outlook"
+  | "google-calendar"
+  | "app-reviews"
+  | "google-play"
+  | "imap";
 
 type SourceMessageContext =
   | ProviderKey
@@ -43,6 +51,8 @@ function formatProviderLabel(provider: ProviderKey) {
       return "Social Listening";
     case "imap":
       return "Email Inbox";
+    case "google-calendar":
+      return "Google Calendar";
     default:
       return provider.charAt(0).toUpperCase() + provider.slice(1);
   }
@@ -60,6 +70,13 @@ function getConnectionHealth(connection?: Connection) {
     return {
       label: "Needs attention",
       tone: "warning" as const,
+    };
+  }
+
+  if (connection.expiry) {
+    return {
+      label: "Access granted",
+      tone: "good" as const,
     };
   }
 
@@ -94,7 +111,9 @@ function getFriendlySourceError(
   if (
     normalized.includes("missing or invalid authorization header") ||
     normalized.includes("jwt") ||
-    normalized.includes("unauthorized")
+    normalized.includes("unauthorized") ||
+    normalized.includes("invalid or expired token") ||
+    normalized.includes("expired token")
   ) {
     return "Your session needs to be refreshed. Please sign in again and try once more.";
   }
@@ -133,6 +152,10 @@ function getFriendlySourceError(
 
   if (context === "outlook") {
     return "We couldn't start Outlook connection right now. Please try again in a moment.";
+  }
+
+  if (context === "google-calendar") {
+    return "We couldn't start Google Calendar connection right now. Please try again in a moment.";
   }
 
   if (context === "imap") {
@@ -273,6 +296,11 @@ function getFriendlySourceError(
 export default function ConnectPage() {
   const { session, user } = useAuth();
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [calendarStatus, setCalendarStatus] = useState<{
+    connected: boolean;
+    email: string | null;
+    lastSyncedAt: string | null;
+  } | null>(null);
   const [appleAppId, setAppleAppId] = useState("");
   const [googlePlayAppId, setGooglePlayAppId] = useState("");
   const [redditForm, setRedditForm] = useState({
@@ -303,6 +331,7 @@ export default function ConnectPage() {
   const [syncingProvider, setSyncingProvider] = useState<ProviderKey | null>(null);
   const [connectingGmail, setConnectingGmail] = useState(false);
   const [connectingOutlook, setConnectingOutlook] = useState(false);
+  const [connectingGoogleCalendar, setConnectingGoogleCalendar] = useState(false);
   const [connectingImap, setConnectingImap] = useState(false);
   const [fetchingReddit, setFetchingReddit] = useState(false);
   const [fetchingSocial, setFetchingSocial] = useState(false);
@@ -320,6 +349,7 @@ export default function ConnectPage() {
   const loadConnections = useCallback(async () => {
     if (!session?.access_token) {
       setConnections([]);
+      setCalendarStatus(null);
       setLoading(false);
       return;
     }
@@ -329,6 +359,18 @@ export default function ConnectPage() {
     try {
       const nextConnections = await api.connections.list(session.access_token);
       setConnections(nextConnections);
+      const nextCalendarConnection = nextConnections.find(
+        (entry) => entry.provider === "google_calendar"
+      );
+      setCalendarStatus({
+        connected: Boolean(nextCalendarConnection),
+        email:
+          (nextCalendarConnection?.metadata?.email as string | null | undefined) ??
+          null,
+        lastSyncedAt:
+          (nextCalendarConnection?.last_synced_at as string | null | undefined) ??
+          null,
+      });
     } catch (err) {
       setMessage(getFriendlySourceError(err, "connections"));
     } finally {
@@ -336,26 +378,59 @@ export default function ConnectPage() {
     }
   }, [session?.access_token]);
 
+  const loadCalendarStatus = useCallback(async () => {
+    if (!session?.access_token) {
+      setCalendarStatus(null);
+      return;
+    }
+
+    try {
+      const nextStatus = await api.connections.getGoogleCalendarStatus(
+        session.access_token
+      );
+      setCalendarStatus(nextStatus);
+    } catch {
+      setCalendarStatus(null);
+    }
+  }, [session?.access_token]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const success = params.get("success");
+    const error = params.get("error");
     const nextMessage = params.get("message");
-    if (nextMessage) {
+    if (success === "calendar") {
+      setMessage("Google Calendar connected successfully");
+    } else if (error === "calendar") {
+      setMessage(nextMessage || "Failed to connect Google Calendar");
+    } else if (nextMessage) {
       setMessage(nextMessage);
       params.delete("message");
-      params.delete("gmail");
-      params.delete("outlook");
-      const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
-      window.history.replaceState({}, "", nextUrl);
     }
+    params.delete("message");
+    params.delete("gmail");
+    params.delete("google_calendar");
+    params.delete("outlook");
+    params.delete("success");
+    params.delete("error");
+    const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+    window.history.replaceState({}, "", nextUrl);
   }, []);
 
   useEffect(() => {
     void loadConnections();
   }, [loadConnections]);
 
+  useEffect(() => {
+    void loadCalendarStatus();
+  }, [loadCalendarStatus]);
+
   const connectionMap = useMemo(
     () => ({
       gmail: connections.find((entry) => entry.provider === "gmail"),
+      "google-calendar": connections.find(
+        (entry) => entry.provider === "google_calendar"
+      ),
       outlook: connections.find((entry) => entry.provider === "outlook"),
       instagram: connections.find((entry) => entry.provider === "instagram"),
       imap: connections.find((entry) => entry.provider === "imap"),
@@ -367,18 +442,73 @@ export default function ConnectPage() {
     [connections]
   );
 
+  const effectiveGmailConnected = Boolean(
+    connectionMap.gmail || connectionMap["google-calendar"]
+  );
+  const effectiveGmailEmail =
+    (connectionMap.gmail?.metadata?.email as string | undefined) ??
+    (connectionMap["google-calendar"]?.metadata?.email as string | undefined) ??
+    user?.email ??
+    null;
+  const effectiveGmailLastSync =
+    (connectionMap.gmail?.last_synced_at as string | undefined) ??
+    (connectionMap.gmail?.metadata?.lastSyncedAt as string | undefined) ??
+    undefined;
+
+  useEffect(() => {
+    const connectedAppleAppId = connectionMap["app-reviews"]?.metadata?.appId;
+    if (
+      typeof connectedAppleAppId === "string" &&
+      connectedAppleAppId &&
+      connectedAppleAppId !== appleAppId
+    ) {
+      setAppleAppId(connectedAppleAppId);
+    }
+
+    const connectedGooglePlayAppId = connectionMap["google-play"]?.metadata?.appId;
+    if (
+      typeof connectedGooglePlayAppId === "string" &&
+      connectedGooglePlayAppId &&
+      connectedGooglePlayAppId !== googlePlayAppId
+    ) {
+      setGooglePlayAppId(connectedGooglePlayAppId);
+    }
+  }, [connectionMap, appleAppId, googlePlayAppId]);
+
   const syncableConnections = useMemo(
     () =>
       connections.filter(
-        (entry) =>
+        (
+          entry
+        ): entry is Connection & {
+          provider: SyncableProviderKey;
+        } =>
           entry.provider === "gmail" ||
           entry.provider === "outlook" ||
+          entry.provider === "google_calendar" ||
           entry.provider === "app-reviews" ||
           entry.provider === "google-play" ||
           entry.provider === "imap"
       ),
     [connections]
   );
+
+  const effectiveCalendarConnected = Boolean(
+    connectionMap["google-calendar"] || connectionMap.gmail || calendarStatus?.connected
+  );
+  const effectiveCalendarEmail =
+    (connectionMap["google-calendar"]?.metadata?.email as string | undefined) ??
+    (connectionMap.gmail?.metadata?.email as string | undefined) ??
+    calendarStatus?.email ??
+    null;
+  const effectiveCalendarLastSync =
+    (connectionMap["google-calendar"]?.last_synced_at as string | undefined) ??
+    (connectionMap["google-calendar"]?.metadata?.lastSyncedAt as
+      | string
+      | undefined) ??
+    (connectionMap.gmail?.metadata?.lastSyncedAt as string | undefined) ??
+    calendarStatus?.lastSyncedAt ??
+    undefined;
 
   const demoModeActive = isDemoUser(user?.email ?? null);
   const hasFirstLiveSignal = syncableConnections.some(
@@ -413,16 +543,32 @@ export default function ConnectPage() {
     setMessage(null);
 
     try {
+      const appId =
+        provider === "google-play"
+          ? googlePlayAppId.trim()
+          : provider === "app-reviews"
+            ? appleAppId.trim()
+            : "";
+
+      if (
+        (provider === "google-play" || provider === "app-reviews") &&
+        !appId
+      ) {
+        setMessage(
+          provider === "google-play"
+            ? "Enter a Google Play package name before connecting reviews."
+            : "Enter an Apple App ID before connecting reviews."
+        );
+        return;
+      }
+
       await api.connections.connect(session.access_token, provider, {
         access_token: `demo-${provider}-token`,
         metadata:
           provider === "instagram"
             ? { accountName: "@productpulse" }
             : {
-                appId:
-                  provider === "google-play"
-                    ? googlePlayAppId || "com.instagram.android"
-                    : appleAppId || "1234567890",
+                appId,
               },
       });
 
@@ -466,6 +612,26 @@ export default function ConnectPage() {
     } catch (err) {
       setMessage(getFriendlySourceError(err, "outlook"));
       setConnectingOutlook(false);
+    }
+  };
+
+  const connectGoogleCalendar = async () => {
+    if (!session?.access_token) {
+      setMessage("Please sign in before connecting Google Calendar.");
+      return;
+    }
+
+    setConnectingGoogleCalendar(true);
+    setMessage(null);
+
+    try {
+      const { authUrl } = await api.connections.startGoogleCalendar(
+        session.access_token
+      );
+      window.location.href = authUrl;
+    } catch (err) {
+      setMessage(getFriendlySourceError(err, "google-calendar"));
+      setConnectingGoogleCalendar(false);
     }
   };
 
@@ -598,18 +764,49 @@ export default function ConnectPage() {
       setMessage(null);
 
       try {
+        const syncPayload =
+          provider === "app-reviews"
+            ? { appId: appleAppId.trim() }
+            : provider === "google-play"
+              ? { appId: googlePlayAppId.trim() }
+              : undefined;
+
+        if (
+          (provider === "app-reviews" || provider === "google-play") &&
+          !syncPayload?.appId
+        ) {
+          throw new Error(
+            provider === "app-reviews"
+              ? "Enter an Apple App ID before syncing reviews."
+              : "Enter a Google Play package name before syncing reviews."
+          );
+        }
+
         const result =
           provider === "imap"
             ? await api.connections.syncImap(session.access_token)
-            : await api.connections.sync(session.access_token, provider);
+            : await api.connections.sync(session.access_token, provider, syncPayload);
         await loadConnections();
         if (!options?.silent) {
           setMessage(
-            `${provider} synced successfully. Imported ${result.imported} feedback item${result.imported === 1 ? "" : "s"}${typeof result.skipped === "number" ? ` and skipped ${result.skipped} non-product message${result.skipped === 1 ? "" : "s"}` : ""}.`
+            `${formatProviderLabel(provider)} synced successfully.${provider === "google-calendar" ? "" : ` Imported ${result.imported} feedback item${result.imported === 1 ? "" : "s"}${typeof result.skipped === "number" ? ` and skipped ${result.skipped} non-product message${result.skipped === 1 ? "" : "s"}` : ""}`}.`
           );
         }
       } catch (err) {
-        const nextMessage = getFriendlySourceError(err, provider);
+        let nextMessage: string;
+
+        if (provider === "gmail") {
+          nextMessage =
+            "We couldn't sync Gmail right now. Please try again in a moment.";
+        } else if (provider === "outlook") {
+          nextMessage =
+            "We couldn't sync Outlook right now. Please try again in a moment.";
+        } else if (provider === "google-calendar") {
+          nextMessage =
+            "We couldn't sync Google Calendar right now. Please try again in a moment.";
+        } else {
+          nextMessage = getFriendlySourceError(err, provider);
+        }
 
         if (options?.silent) {
           setAutoSyncStatus(nextMessage);
@@ -620,7 +817,12 @@ export default function ConnectPage() {
         setSyncingProvider(null);
       }
     },
-    [loadConnections, session?.access_token]
+    [
+      appleAppId,
+      googlePlayAppId,
+      loadConnections,
+      session?.access_token,
+    ]
   );
 
   const saveAutoSyncSettings = useCallback(
@@ -848,21 +1050,24 @@ export default function ConnectPage() {
         <SourceCard
           name="Gmail"
           icon="gmail"
-          connected={Boolean(connectionMap.gmail)}
+          connected={effectiveGmailConnected}
           accountName={
-            (connectionMap.gmail?.metadata?.email as string | undefined) ??
-            user?.email ??
+            effectiveGmailEmail ??
             "Connect your Gmail inbox"
           }
           lastSync={
-            formatSyncTime(
-              (connectionMap.gmail?.last_synced_at as string | undefined) ??
-                (connectionMap.gmail?.metadata?.lastSyncedAt as string | undefined) ??
-                undefined
-            )
+            formatSyncTime(effectiveGmailLastSync)
           }
-          healthLabel={getConnectionHealth(connectionMap.gmail).label}
-          healthTone={getConnectionHealth(connectionMap.gmail).tone}
+          healthLabel={
+            effectiveGmailConnected
+              ? getConnectionHealth(connectionMap.gmail).label
+              : "Ready to connect"
+          }
+          healthTone={
+            effectiveGmailConnected
+              ? getConnectionHealth(connectionMap.gmail).tone
+              : "neutral"
+          }
           onConnect={connectGmail}
           onSync={() => syncProvider("gmail")}
           syncing={syncingProvider === "gmail" || connectingGmail}
@@ -870,24 +1075,31 @@ export default function ConnectPage() {
         />
 
         <SourceCard
-          name="Instagram"
-          icon="instagram"
-          connected={Boolean(connectionMap.instagram)}
+          name="Google Calendar"
+          icon="google-calendar"
+          connected={effectiveCalendarConnected}
           accountName={
-            (connectionMap.instagram?.metadata?.accountName as string | undefined) ??
-            "@yourbrand"
+            effectiveCalendarConnected
+              ? `Connected as ${effectiveCalendarEmail ?? "your Google account"}`
+              : "Allow Product Pulse to schedule events, reminders, and follow-ups automatically."
           }
           lastSync={
-            formatSyncTime(
-              (connectionMap.instagram?.last_synced_at as string | undefined) ??
-                (connectionMap.instagram?.metadata?.lastSyncedAt as string | undefined) ??
-                undefined
-            )
+            formatSyncTime(effectiveCalendarLastSync)
           }
-          healthLabel={getConnectionHealth(connectionMap.instagram).label}
-          healthTone={getConnectionHealth(connectionMap.instagram).tone}
-          onConnect={() => connect("instagram")}
-          onDisconnect={() => disconnect("instagram")}
+          healthLabel={
+            effectiveCalendarConnected ? "Connected and ready" : "Not connected"
+          }
+          healthTone={effectiveCalendarConnected ? "good" : "neutral"}
+          onConnect={connectGoogleCalendar}
+          onSync={() => syncProvider("google-calendar")}
+          syncing={
+            connectingGoogleCalendar || syncingProvider === "google-calendar"
+          }
+          connectLabel="Connect Calendar"
+          reconnectLabel="Reconnect"
+          workingLabel="Connecting..."
+          onDisconnect={() => disconnect("google-calendar")}
+          helperText="Used by the agent to schedule tasks automatically."
         />
 
         <SourceCard
@@ -1160,15 +1372,21 @@ export default function ConnectPage() {
           syncing={syncingProvider === "app-reviews"}
           onConnect={() => connect("app-reviews")}
           onDisconnect={() => disconnect("app-reviews")}
+          alwaysShowChildren
         >
-          {!connectionMap["app-reviews"] && (
+          <div className="grid gap-2">
             <Input
               placeholder="Enter Apple App ID"
               value={appleAppId}
               onChange={(e) => setAppleAppId(e.target.value)}
               className="h-11 rounded-xl border-slate-800 bg-slate-950 text-sm text-slate-100 placeholder:text-slate-600 focus-visible:border-indigo-500/50 focus-visible:ring-2 focus-visible:ring-indigo-500/50"
             />
-          )}
+            <p className="text-xs text-slate-500">
+              {connectionMap["app-reviews"]
+                ? "You can update the App ID here before syncing again."
+                : "Paste the Apple App Store ID you want Product Pulse to monitor."}
+            </p>
+          </div>
         </SourceCard>
 
         <SourceCard
@@ -1193,16 +1411,43 @@ export default function ConnectPage() {
           syncing={syncingProvider === "google-play"}
           onConnect={() => connect("google-play")}
           onDisconnect={() => disconnect("google-play")}
+          alwaysShowChildren
         >
-          {!connectionMap["google-play"] && (
+          <div className="grid gap-2">
             <Input
               placeholder="Enter Play Store App ID (e.g. com.instagram.android)"
               value={googlePlayAppId}
               onChange={(e) => setGooglePlayAppId(e.target.value)}
               className="h-11 rounded-xl border-slate-800 bg-slate-950 text-sm text-slate-100 placeholder:text-slate-600 focus-visible:border-indigo-500/50 focus-visible:ring-2 focus-visible:ring-indigo-500/50"
             />
-          )}
+            <p className="text-xs text-slate-500">
+              {connectionMap["google-play"]
+                ? "Update the package name here if you want to switch apps before the next sync."
+                : "Use the package name from Google Play, like com.instagram.android."}
+            </p>
+          </div>
         </SourceCard>
+
+        <SourceCard
+          name="Instagram"
+          icon="instagram"
+          connected={Boolean(connectionMap.instagram)}
+          accountName={
+            (connectionMap.instagram?.metadata?.accountName as string | undefined) ??
+            "@yourbrand"
+          }
+          lastSync={
+            formatSyncTime(
+              (connectionMap.instagram?.last_synced_at as string | undefined) ??
+                (connectionMap.instagram?.metadata?.lastSyncedAt as string | undefined) ??
+                undefined
+            )
+          }
+          healthLabel={getConnectionHealth(connectionMap.instagram).label}
+          healthTone={getConnectionHealth(connectionMap.instagram).tone}
+          onConnect={() => connect("instagram")}
+          onDisconnect={() => disconnect("instagram")}
+        />
       </div>
 
       {loading && (

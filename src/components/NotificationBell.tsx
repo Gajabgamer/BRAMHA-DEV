@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Lightbulb, Radar, Sparkles } from "lucide-react";
+import { Bell, Radar, Sparkles, Ticket, TimerReset } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -9,17 +9,33 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useDashboardLive } from "@/providers/DashboardLiveProvider";
+import { useNotifications } from "@/providers/NotificationsProvider";
 
-function kindIcon(kind: "critical" | "new" | "insight") {
-  if (kind === "critical") return <Radar className="h-4 w-4 text-rose-400" />;
-  if (kind === "new") return <Bell className="h-4 w-4 text-amber-400" />;
-  return <Lightbulb className="h-4 w-4 text-indigo-400" />;
+function notificationIcon(type: string) {
+  if (type === "spike") {
+    return <Radar className="h-4 w-4 text-rose-400" />;
+  }
+  if (type === "ticket") {
+    return <Ticket className="h-4 w-4 text-amber-400" />;
+  }
+  if (type === "reminder") {
+    return <TimerReset className="h-4 w-4 text-indigo-400" />;
+  }
+  return <Bell className="h-4 w-4 text-slate-300" />;
 }
 
 export default function NotificationBell() {
-  const { notifications, unreadCount, acknowledgeNotifications } =
-    useDashboardLive();
+  const { notifications, unreadCount, markAsRead } = useNotifications();
+
+  const handleOpen = async () => {
+    const unreadIds = notifications
+      .filter((notification) => !notification.read)
+      .map((notification) => notification.id);
+
+    if (unreadIds.length > 0) {
+      await markAsRead(unreadIds);
+    }
+  };
 
   return (
     <DropdownMenu>
@@ -31,7 +47,7 @@ export default function NotificationBell() {
             className="relative rounded-xl border border-slate-800 bg-slate-900/60 text-slate-300 hover:bg-slate-800"
           />
         }
-        onClick={acknowledgeNotifications}
+        onClick={() => void handleOpen()}
       >
         <Bell className="h-4 w-4" />
         {unreadCount > 0 && (
@@ -50,31 +66,42 @@ export default function NotificationBell() {
         </div>
         <DropdownMenuSeparator className="bg-slate-800" />
         <div className="max-h-96 space-y-1 overflow-y-auto px-1 py-1">
-          {notifications.map((notification) => (
-            <DropdownMenuItem
-              key={notification.id}
-              className="items-start gap-3 rounded-xl px-3 py-3 text-slate-300 focus:bg-slate-800 focus:text-white"
-            >
-              <span className="mt-0.5">{kindIcon(notification.kind)}</span>
-              <div className="flex-1">
-                <p className="text-sm leading-snug">{notification.title}</p>
-                <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                  {!notification.read && (
-                    <span className="inline-flex items-center gap-1 text-emerald-400">
-                      <Sparkles className="h-3 w-3" />
-                      unread
+          {notifications.length === 0 ? (
+            <div className="rounded-xl px-3 py-6 text-center text-sm text-slate-500">
+              No notifications yet.
+            </div>
+          ) : (
+            notifications.map((notification) => (
+              <DropdownMenuItem
+                key={notification.id}
+                className="items-start gap-3 rounded-xl px-3 py-3 text-slate-300 focus:bg-slate-800 focus:text-white"
+              >
+                <span className="mt-0.5">{notificationIcon(notification.type)}</span>
+                <div className="flex-1">
+                  <p className="text-sm font-medium leading-snug text-white">
+                    {notification.title}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-400">
+                    {notification.message}
+                  </p>
+                  <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                    {!notification.read && (
+                      <span className="inline-flex items-center gap-1 text-emerald-400">
+                        <Sparkles className="h-3 w-3" />
+                        unread
+                      </span>
+                    )}
+                    <span>
+                      {new Date(notification.createdAt).toLocaleTimeString("en-US", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </span>
-                  )}
-                  <span>
-                    {new Date(notification.createdAt).toLocaleTimeString("en-US", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
+                  </div>
                 </div>
-              </div>
-            </DropdownMenuItem>
-          ))}
+              </DropdownMenuItem>
+            ))
+          )}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -1,4 +1,5 @@
 const supabase = require("../lib/supabaseClient");
+const { ensureUserRecords } = require("../lib/ensureUserRecords");
 
 async function register(req, res) {
   const { email, password, fullName } = req.body ?? {};
@@ -19,6 +20,11 @@ async function register(req, res) {
   if (error) {
     return res.status(400).json({ error: error.message });
   }
+
+  await ensureUserRecords({
+    id: data.user?.id ?? null,
+    email: data.user?.email ?? email,
+  });
 
   return res.status(201).json({
     user: {

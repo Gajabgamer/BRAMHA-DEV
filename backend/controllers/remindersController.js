@@ -1,16 +1,19 @@
 const supabase = require('../lib/supabaseClient');
+const { parseAgentDescription } = require('../services/agentService');
 
 const VALID_STATUSES = new Set(['pending', 'done']);
 
 function normalizeReminder(row) {
+  const parsedDescription = parseAgentDescription(row.description);
   return {
     id: row.id,
     title: row.title,
-    description: row.description,
+    description: parsedDescription.description,
     remindAt: row.remind_at,
     status: row.status,
     linkedIssueId: row.linked_issue_id,
     linkedTicketId: row.linked_ticket_id,
+    createdByAgent: parsedDescription.createdByAgent,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     linkedIssue: row.issues

@@ -7,12 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { useAuth } from "@/providers/AuthProvider";
+import { useAgent } from "@/providers/AgentProvider";
 import { cn } from "@/lib/utils";
 import { getPasswordRules, isStrongPassword } from "@/lib/password-rules";
 import { toUserFacingError } from "@/lib/user-facing-errors";
 
 export default function ProfilePage() {
   const { profile, session, updatePassword, updateProfile } = useAuth();
+  const { status: agentStatus, setAgentEnabled } = useAgent();
   const [name, setName] = useState(profile.name ?? "");
   const [nameLoading, setNameLoading] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
@@ -26,6 +28,9 @@ export default function ProfilePage() {
   const [passwordMessage, setPasswordMessage] = useState("");
   const [nameError, setNameError] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [agentSaving, setAgentSaving] = useState(false);
+  const [agentMessage, setAgentMessage] = useState("");
+  const [agentError, setAgentError] = useState("");
 
   const passwordRules = useMemo(() => getPasswordRules(password), [password]);
   const sdkSnippet = useMemo(() => {
@@ -135,6 +140,25 @@ export default function ProfilePage() {
       window.setTimeout(() => setSdkMessage(""), 2000);
     } catch {
       setSdkError("We couldn't copy that automatically. Please copy it manually.");
+    }
+  };
+
+  const handleAgentToggle = async (enabled: boolean) => {
+    setAgentSaving(true);
+    setAgentError("");
+    setAgentMessage("");
+
+    try {
+      await setAgentEnabled(enabled);
+      setAgentMessage(
+        enabled
+          ? "Autonomous actions are enabled. The agent will keep acting on fresh signals."
+          : "Autonomous actions are paused. The agent will keep listening without creating follow-ups."
+      );
+    } catch (err) {
+      setAgentError(toUserFacingError(err, "agent-settings"));
+    } finally {
+      setAgentSaving(false);
     }
   };
 
@@ -284,6 +308,60 @@ export default function ProfilePage() {
           >
             {passwordLoading ? "Updating..." : "Update password"}
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="xl:col-span-2 rounded-3xl border border-slate-800 bg-slate-900/70 text-slate-100 shadow-[0_25px_70px_rgba(15,23,42,0.4)] ring-0">
+        <CardHeader className="border-b border-slate-800 pb-5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-500/15 text-cyan-200">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <CardTitle className="text-white">Autonomous Agent</CardTitle>
+              <CardDescription className="text-slate-400">
+                Control whether Product Pulse can create tickets and reminders automatically.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5 pt-6">
+          {agentError && (
+            <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+              {agentError}
+            </div>
+          )}
+          {agentMessage && (
+            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+              {agentMessage}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-medium text-white">Enable autonomous actions</p>
+              <p className="mt-1 text-sm text-slate-400">
+                The agent will observe new feedback, reason over trends, and create follow-up work when needed.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleAgentToggle(!agentStatus.enabled)}
+              disabled={agentSaving}
+              className={cn(
+                "inline-flex h-11 min-w-32 items-center justify-center rounded-2xl px-4 text-sm font-medium transition",
+                agentStatus.enabled
+                  ? "bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/20"
+                  : "bg-slate-800 text-slate-200 hover:bg-slate-700"
+              )}
+            >
+              {agentSaving
+                ? "Saving..."
+                : agentStatus.enabled
+                  ? "Enabled"
+                  : "Disabled"}
+            </button>
+          </div>
         </CardContent>
       </Card>
 

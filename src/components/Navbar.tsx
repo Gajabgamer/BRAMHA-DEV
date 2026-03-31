@@ -1,10 +1,11 @@
 "use client";
 
-import { Activity, ChevronDown, LogOut, Search, UserCircle2 } from "lucide-react";
+import { Activity, Bot, ChevronDown, LoaderCircle, LogOut, Radio, Search, UserCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import NotificationBell from "@/components/NotificationBell";
 import { useIssues } from "@/providers/IssuesProvider";
 import { useAuth } from "@/providers/AuthProvider";
+import { useAgent } from "@/providers/AgentProvider";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -23,6 +24,7 @@ interface NavbarProps {
 export default function Navbar({ title, subtitle }: NavbarProps) {
   const { loading } = useIssues();
   const { profile, signOut } = useAuth();
+  const { status } = useAgent();
   const router = useRouter();
 
   const handleLogout = async () => {
@@ -38,6 +40,19 @@ export default function Navbar({ title, subtitle }: NavbarProps) {
         .slice(0, 2)
         .toUpperCase()
     : "PP";
+
+  const agentTone =
+    status.state === "processing"
+      ? "border-amber-500/20 bg-amber-500/10 text-amber-200"
+      : status.state === "active"
+        ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+        : "border-rose-500/20 bg-rose-500/10 text-rose-200";
+  const agentLabel =
+    status.state === "processing"
+      ? "Agent Processing"
+      : status.state === "active"
+        ? "Agent Active"
+        : "Agent Idle";
 
   return (
     <header className="sticky top-0 z-30 mb-8 flex flex-col gap-4 border-b border-slate-800/80 bg-slate-950/85 pb-5 backdrop-blur-md md:flex-row md:items-end md:justify-between">
@@ -55,6 +70,18 @@ export default function Navbar({ title, subtitle }: NavbarProps) {
       </div>
 
       <div className="flex items-center gap-3">
+        <div className={`hidden items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium md:inline-flex ${agentTone}`}>
+          {status.state === "processing" ? (
+            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Bot className="h-3.5 w-3.5" />
+          )}
+          {agentLabel}
+        </div>
+        <div className="hidden items-center gap-2 rounded-full border border-slate-800 bg-slate-900/70 px-3 py-2 text-xs text-slate-300 lg:inline-flex">
+          <Radio className="h-3.5 w-3.5 text-emerald-300" />
+          {status.listening ? "Listening to feedback..." : "Autonomy paused"}
+        </div>
         <div className="relative hidden w-72 md:block">
           <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <Input

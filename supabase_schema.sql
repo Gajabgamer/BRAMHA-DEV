@@ -12,6 +12,7 @@ CREATE TABLE public.connected_accounts (
     provider TEXT NOT NULL,
     access_token TEXT NOT NULL,
     refresh_token TEXT,
+    expiry TIMESTAMP WITH TIME ZONE,
     metadata JSONB DEFAULT '{}'::jsonb,
     status TEXT DEFAULT 'connected' NOT NULL,
     last_synced_at TIMESTAMP WITH TIME ZONE,
@@ -24,8 +25,11 @@ ALTER TABLE public.connected_accounts
 DROP CONSTRAINT IF EXISTS connected_accounts_provider_check;
 
 ALTER TABLE public.connected_accounts
+ADD COLUMN IF NOT EXISTS expiry TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE public.connected_accounts
 ADD CONSTRAINT connected_accounts_provider_check
-CHECK (provider IN ('gmail', 'outlook', 'instagram', 'app-reviews', 'google-play', 'imap'));
+CHECK (provider IN ('gmail', 'google_calendar', 'outlook', 'instagram', 'app-reviews', 'google-play', 'imap'));
 
 -- 3. Automatic User Sync Trigger
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
@@ -84,20 +88,39 @@ CREATE TABLE IF NOT EXISTS public.feedback_events (
     user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
     source TEXT NOT NULL,
     external_id TEXT NOT NULL,
+    content_hash TEXT,
+    unique_key TEXT NOT NULL,
     title TEXT NOT NULL,
     body TEXT NOT NULL,
     author TEXT,
+    author_email TEXT,
     url TEXT,
     occurred_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     sentiment TEXT DEFAULT 'neutral' NOT NULL,
+    replied BOOLEAN DEFAULT false NOT NULL,
     location JSONB DEFAULT '{"country":null,"state":null,"confidence":"low"}'::jsonb NOT NULL,
     metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    UNIQUE(user_id, source, external_id)
+    UNIQUE(user_id, unique_key)
 );
 
 ALTER TABLE public.feedback_events
 ADD COLUMN IF NOT EXISTS location JSONB DEFAULT '{"country":null,"state":null,"confidence":"low"}'::jsonb NOT NULL;
+
+ALTER TABLE public.feedback_events
+ADD COLUMN IF NOT EXISTS content_hash TEXT;
+
+ALTER TABLE public.feedback_events
+ADD COLUMN IF NOT EXISTS unique_key TEXT;
+
+ALTER TABLE public.feedback_events
+ADD COLUMN IF NOT EXISTS replied BOOLEAN DEFAULT false NOT NULL;
+
+ALTER TABLE public.feedback_events
+ADD COLUMN IF NOT EXISTS author_email TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_feedback_events_content_hash ON public.feedback_events(user_id, content_hash);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_events_unique_key ON public.feedback_events(user_id, unique_key);
 
 ALTER TABLE public.issues
 ADD COLUMN IF NOT EXISTS location_breakdown JSONB DEFAULT '{}'::jsonb NOT NULL;
@@ -141,6 +164,45 @@ CREATE INDEX IF NOT EXISTS idx_reminders_remind_at ON public.reminders(remind_at
 CREATE INDEX IF NOT EXISTS idx_reminders_linked_issue_id ON public.reminders(linked_issue_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_linked_ticket_id ON public.reminders(linked_ticket_id);
 
+CREATE TABLE IF NOT EXISTS public.agent_settings (
+    user_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+    autonomous_actions_enabled BOOLEAN DEFAULT true NOT NULL,
+    last_state TEXT DEFAULT 'idle' NOT NULL,
+    last_run_at TIMESTAMP WITH TIME ZONE,
+    last_summary TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.agent_actions (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
+    agent_id TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_actions_user_created_at ON public.agent_actions(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.notifications (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    type TEXT DEFAULT 'info' NOT NULL,
+    read BOOLEAN DEFAULT false NOT NULL,
+    metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_created_at ON public.notifications(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON public.notifications(user_id, read);
+
+ALTER TABLE public.agent_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agent_actions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
 DROP POLICY IF EXISTS "reminders_select_own" ON public.reminders;
 CREATE POLICY "reminders_select_own"
 ON public.reminders
@@ -169,3 +231,61 @@ ON public.reminders
 FOR DELETE
 TO authenticated
 USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "agent_settings_select_own" ON public.agent_settings;
+CREATE POLICY "agent_settings_select_own"
+ON public.agent_settings
+FOR SELECT
+TO authenticated
+USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "agent_settings_insert_own" ON public.agent_settings;
+CREATE POLICY "agent_settings_insert_own"
+ON public.agent_settings
+FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "agent_settings_update_own" ON public.agent_settings;
+CREATE POLICY "agent_settings_update_own"
+ON public.agent_settings
+FOR UPDATE
+TO authenticated
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "agent_actions_select_own" ON public.agent_actions;
+CREATE POLICY "agent_actions_select_own"
+ON public.agent_actions
+FOR SELECT
+TO authenticated
+USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "agent_actions_insert_own" ON public.agent_actions;
+CREATE POLICY "agent_actions_insert_own"
+ON public.agent_actions
+FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "notifications_select_own" ON public.notifications;
+CREATE POLICY "notifications_select_own"
+ON public.notifications
+FOR SELECT
+TO authenticated
+USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "notifications_insert_own" ON public.notifications;
+CREATE POLICY "notifications_insert_own"
+ON public.notifications
+FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "notifications_update_own" ON public.notifications;
+CREATE POLICY "notifications_update_own"
+ON public.notifications
+FOR UPDATE
+TO authenticated
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);

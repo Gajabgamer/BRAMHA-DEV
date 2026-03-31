@@ -1,6 +1,7 @@
 const express = require('express');
 const authController = require('../controllers/authController');
 const aiController = require('../controllers/aiController');
+const agentController = require('../controllers/agentController');
 const { requireAuth } = require('../middleware/auth');
 const { aiChatRateLimit } = require('../middleware/aiRateLimit');
 const connectionsController = require('../controllers/connectionsController');
@@ -11,6 +12,7 @@ const redditController = require('../controllers/redditController');
 const reviewsController = require('../controllers/reviewsController');
 const socialSearchController = require('../controllers/socialSearchController');
 const sdkController = require('../controllers/sdkController');
+const notificationController = require('../controllers/notificationController');
 const ticketsController = require('../controllers/ticketsController');
 const timelineController = require('../controllers/timelineController');
 const reportsController = require('../controllers/reportsController');
@@ -22,6 +24,7 @@ const router = express.Router();
 
 router.post('/auth/register', authController.register);
 router.get('/integrations/gmail/callback', connectionsController.gmailOAuthCallback);
+router.get('/integrations/google-calendar/callback', connectionsController.googleCalendarOAuthCallback);
 router.get('/integrations/outlook/callback', connectionsController.outlookOAuthCallback);
 router.post('/sdk/event', sdkRateLimit, sdkController.postSdkEvent);
 router.post('/sdk/feedback', sdkRateLimit, sdkController.postSdkFeedback);
@@ -66,6 +69,8 @@ router.get('/me', async (req, res) => {
 // OAuth Connections Management
 router.get('/connections', connectionsController.getConnections);
 router.get('/integrations/gmail/start', connectionsController.startGmailOAuth);
+router.get('/integrations/google-calendar/start', connectionsController.startGoogleCalendarOAuth);
+router.get('/integrations/google-calendar/status', connectionsController.getGoogleCalendarStatus);
 router.get('/integrations/outlook/start', connectionsController.startOutlookOAuth);
 router.get('/integrations/imap/status', imapController.getImapStatus);
 router.post('/integrations/imap/connect', imapController.connectImapAccount);
@@ -82,6 +87,12 @@ router.get('/issues', issuesController.listIssues);
 router.get('/issues/:id', issuesController.getIssueById);
 router.get('/timeline', timelineController.getTimeline);
 router.get('/reports/weekly', reportsController.getWeeklyReport);
+router.get('/agent/status', agentController.getStatus);
+router.get('/agent/actions', agentController.getActions);
+router.patch('/agent/settings', agentController.updateSettings);
+router.post('/agent/run', agentController.runNow);
+router.get('/notifications', notificationController.getNotifications);
+router.post('/notifications/read', notificationController.markRead);
 router.get('/tickets', ticketsController.listTickets);
 router.post('/tickets', ticketsController.createTicket);
 router.patch('/tickets/:id', ticketsController.updateTicket);

@@ -6,6 +6,8 @@ export type UserFacingErrorContext =
   | "auth-google"
   | "auth-reset"
   | "sdk-load"
+  | "agent-load"
+  | "agent-settings"
   | "profile-update"
   | "password-update"
   | "ai-helper"
@@ -100,6 +102,12 @@ export function toUserFacingError(
 
     case "sdk-load":
       return "We couldn't load your SDK credentials right now. Please refresh and try again.";
+
+    case "agent-load":
+      return "We couldn't load the agent activity right now. Please refresh and try again.";
+
+    case "agent-settings":
+      return "We couldn't update the agent setting right now. Please try again.";
 
     case "password-update":
       if (normalized.includes("same password")) {
