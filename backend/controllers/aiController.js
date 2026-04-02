@@ -1,4 +1,5 @@
 const { getDashboardSnapshot } = require('../lib/dashboardSnapshot');
+const { getProductSetupStatus } = require('../services/productSetupService');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
@@ -103,6 +104,7 @@ async function chatWithAssistant(req, res) {
 
     const snapshot = await getDashboardSnapshot(req.user);
     const digest = buildSnapshotDigest(snapshot);
+    const productSetup = await getProductSetupStatus(req.user);
 
     const parsed = await groqJsonRequest([
       {
@@ -111,6 +113,7 @@ async function chatWithAssistant(req, res) {
           'You are Product Pulse AI Helper.',
           'Answer as a real-time product operations copilot for the signed-in founder.',
           'Use the live database snapshot as ground truth.',
+          `The product name is ${productSetup.productName || 'the product'}. Reference it naturally when useful.`,
           'Be practical, concise, and action-oriented.',
           'Return JSON only.',
         ].join(' '),

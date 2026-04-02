@@ -18,6 +18,7 @@ import {
   requestBrowserNotificationPermission,
   sendBrowserNotification,
 } from "@/services/notificationClient";
+import { useLiveEvents } from "./LiveEventsProvider";
 
 interface NotificationsContextValue {
   notifications: Notification[];
@@ -34,6 +35,7 @@ const NotificationsContext = createContext<NotificationsContextValue | null>(nul
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
+  const { subscribeToEvents } = useLiveEvents();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -118,12 +120,55 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const timer = window.setInterval(() => {
-      void refreshNotifications();
-    }, 10000);
+    return subscribeToEvents((event) => {
+      if (event.type === "notification_created") {
+        const notification = event.payload?.notification as Notification | undefined;
+        if (!notification) {
+          void refreshNotifications();
+          return;
+        }
 
-    return () => window.clearInterval(timer);
-  }, [refreshNotifications, session?.access_token]);
+        setNotifications((current) => {
+          if (current.some((entry) => entry.id === notification.id)) {
+            return current;
+          }
+          return [notification, ...current].slice(0, 25);
+        });
+        setUnreadCount((current) => current + (notification.read ? 0 : 1));
+
+        if (permission === "granted" && !notification.read) {
+          sendBrowserNotification({
+            id: notification.id,
+            title: notification.title,
+            body: notification.message,
+            url: buildNotificationUrl(notification),
+          });
+        }
+        return;
+      }
+
+      if (event.type === "notification_read") {
+        const notificationId = String(event.payload?.notificationId || "");
+        if (!notificationId) {
+          return;
+        }
+        setNotifications((current) =>
+          current.map((entry) =>
+            entry.id === notificationId ? { ...entry, read: true } : entry
+          )
+        );
+        setUnreadCount((current) => Math.max(0, current - 1));
+      }
+    }, {
+      types: ["notification_created", "notification_read"],
+    });
+  }, [
+    buildNotificationUrl,
+    permission,
+    refreshNotifications,
+    session?.access_token,
+    subscribeToEvents,
+  ]);
 
   useEffect(() => {
     setPermission(getBrowserNotificationPermission());

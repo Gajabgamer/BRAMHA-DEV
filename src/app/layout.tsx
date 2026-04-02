@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/providers/AuthProvider";
 import { IssuesProvider } from "@/providers/IssuesProvider";
+import { SetupProvider } from "@/providers/SetupProvider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { LiveEventsProvider } from "@/providers/LiveEventsProvider";
 
 export const metadata: Metadata = {
   title: "Product Pulse   AI Product Intelligence",
@@ -22,9 +24,13 @@ export default function RootLayout({
         className="min-h-screen bg-slate-50 text-slate-900 antialiased"
       >
         <AuthProvider>
-          <IssuesProvider>
-            <TooltipProvider delay={0}>{children}</TooltipProvider>
-          </IssuesProvider>
+          <LiveEventsProvider>
+            <SetupProvider>
+              <IssuesProvider>
+                <TooltipProvider delay={0}>{children}</TooltipProvider>
+              </IssuesProvider>
+            </SetupProvider>
+          </LiveEventsProvider>
         </AuthProvider>
       </body>
     </html>

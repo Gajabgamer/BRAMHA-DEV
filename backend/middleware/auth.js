@@ -8,6 +8,8 @@ function isPublicPath(pathname = '') {
     '/api/integrations/gmail/callback',
     '/integrations/outlook/callback',
     '/api/integrations/outlook/callback',
+    '/integrations/github/callback',
+    '/api/integrations/github/callback',
     '/sdk/event',
     '/api/sdk/event',
     '/sdk/feedback',

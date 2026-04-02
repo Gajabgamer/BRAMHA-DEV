@@ -1,14 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import AgentTrustPanel from "@/components/AgentTrustPanel";
+import DecisionFeedbackBar from "@/components/DecisionFeedbackBar";
+import IssueCollaborationPanel from "@/components/IssueCollaborationPanel";
 import ReminderCard from "@/components/ReminderCard";
 import ReminderFormModal from "@/components/ReminderFormModal";
-import type { IssueDetail, Reminder } from "@/lib/api";
+import type { AgentConfidenceResult, IssueDetail, Reminder } from "@/lib/api";
 import { api } from "@/lib/api";
 import { toUserFacingError } from "@/lib/user-facing-errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   ArrowLeft,
   Sparkles,
@@ -20,6 +28,8 @@ import {
   MessageCircle,
   Star,
   BellRing,
+  ShieldCheck,
+  GitBranch,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -88,6 +98,12 @@ function issueCategoryVariant(category: IssueDetail["category"]) {
   return "success" as const;
 }
 
+function confidenceVariant(level?: string | null) {
+  if (level === "high") return "success" as const;
+  if (level === "medium") return "secondary" as const;
+  return "destructive" as const;
+}
+
 export default function IssueDetailPage() {
   const params = useParams<{ id: string }>();
   const { session } = useAuth();
@@ -95,6 +111,7 @@ export default function IssueDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [confidence, setConfidence] = useState<AgentConfidenceResult | null>(null);
   const [reminderError, setReminderError] = useState<string | null>(null);
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
   const [creatingReminder, setCreatingReminder] = useState(false);
@@ -139,6 +156,40 @@ export default function IssueDetailPage() {
     }
 
     void loadIssue();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [params.id, session?.access_token]);
+
+  useEffect(() => {
+    const token = session?.access_token;
+    const issueId = typeof params.id === "string" ? params.id : undefined;
+
+    if (!token || !issueId) {
+      setConfidence(null);
+      return;
+    }
+
+    const safeToken = token;
+    const safeIssueId = issueId;
+
+    let cancelled = false;
+
+    async function loadConfidence() {
+      try {
+        const data = await api.agent.confidence(safeToken, safeIssueId);
+        if (!cancelled) {
+          setConfidence(data);
+        }
+      } catch {
+        if (!cancelled) {
+          setConfidence(null);
+        }
+      }
+    }
+
+    void loadConfidence();
 
     return () => {
       cancelled = true;
@@ -349,19 +400,38 @@ export default function IssueDetailPage() {
           Back to Control Room
         </Link>
 
-        <div className="mb-4 flex items-center gap-3">
-          <Badge variant="destructive">CRITICAL ALERT</Badge>
-          <Badge
-            variant={
-              issueCategoryVariant(issue.category) as
-                | "default"
-                | "secondary"
-                | "destructive"
-                | "success"
-            }
-          >
-            {issue.category}
-          </Badge>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Badge variant="destructive">CRITICAL ALERT</Badge>
+            <Badge
+              variant={
+                issueCategoryVariant(issue.category) as
+                  | "default"
+                  | "secondary"
+                  | "destructive"
+                  | "success"
+              }
+            >
+              {issue.category}
+            </Badge>
+          </div>
+
+          {confidence ? (
+            <Tooltip>
+              <TooltipTrigger className="inline-flex">
+                <Badge
+                  variant={confidenceVariant(confidence.confidence_level)}
+                  className="rounded-full px-3 py-1.5 text-sm"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {confidence.confidence_score}% Confidence
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                How confident the system is in this decision
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
         </div>
 
         <h1 className="mb-2 text-3xl font-bold leading-tight text-white">
@@ -381,6 +451,10 @@ export default function IssueDetailPage() {
               {issue.summary}
             </p>
           </div>
+
+          {confidence ? <AgentTrustPanel confidence={confidence} /> : null}
+
+          <IssueCollaborationPanel issueId={issue.id} />
 
           <div className="relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-emerald-950/30 p-6 ring-1 ring-inset ring-emerald-500/20 shadow-[0_0_30px_-10px_rgba(16,185,129,0.15)]">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500/0 via-emerald-400 to-emerald-500/0" />
@@ -416,6 +490,14 @@ export default function IssueDetailPage() {
                 Ignore
               </Button>
             </div>
+            {confidence?.issue_type ? (
+              <div className="mt-5">
+                <DecisionFeedbackBar
+                  token={session?.access_token}
+                  issueType={confidence.issue_type}
+                />
+              </div>
+            ) : null}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -517,6 +599,33 @@ export default function IssueDetailPage() {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="mt-12 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-[0_22px_60px_-36px_rgba(15,23,42,0.95)]">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">
+              <GitBranch className="h-4 w-4" />
+              GitHub Workspace
+            </div>
+            <h2 className="text-2xl font-semibold text-white">
+              Code fixes now live in a dedicated GitHub workspace
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+              Open the GitHub workspace to connect a repository, trace this issue
+              into code, review a patch, and create a pull request safely.
+            </p>
+          </div>
+          <Link
+            href={`/dashboard/github?issueId=${issue.id}`}
+            className="inline-flex"
+          >
+            <Button variant="secondary">
+              <GitBranch className="h-4 w-4" />
+              Open GitHub Workspace
+            </Button>
+          </Link>
         </div>
       </div>
 

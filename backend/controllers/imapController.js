@@ -3,6 +3,7 @@ const { encryptSecret } = require('../lib/credentialCipher');
 const { insertFeedbackEventsDeduped } = require('../lib/feedbackDedup');
 const { detectSentiment, rebuildIssuesFromFeedback } = require('../lib/issueAggregator');
 const { classifyFeedbackEvents } = require('../lib/groqFeedbackClassifier');
+const { ensureUserRecords } = require('../lib/ensureUserRecords');
 const { connectIMAP, fetchEmails, MAX_EMAILS_PER_SYNC } = require('../services/imapService');
 const { extractLocation } = require('../services/locationService');
 const { runAgent } = require('../services/agentService');
@@ -164,6 +165,8 @@ async function getImapStatus(req, res) {
 
 async function syncImapAccount(req, res) {
   try {
+    await ensureUserRecords(req.user);
+
     const connection = await getImapConnection(req.user.id);
 
     if (!connection) {

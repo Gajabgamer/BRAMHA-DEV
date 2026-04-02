@@ -12,6 +12,7 @@ import {
 import { api, type AgentAction, type AgentStatus } from "@/lib/api";
 import { toUserFacingError } from "@/lib/user-facing-errors";
 import { useAuth } from "./AuthProvider";
+import { useLiveEvents } from "./LiveEventsProvider";
 
 const EMPTY_STATUS: AgentStatus = {
   enabled: true,
@@ -28,7 +29,7 @@ interface AgentContextValue {
   actions: AgentAction[];
   loading: boolean;
   error: string | null;
-  refreshAgent: () => void;
+  refreshAgent: (options?: { silent?: boolean }) => void;
   setAgentEnabled: (enabled: boolean) => Promise<void>;
 }
 
@@ -36,12 +37,13 @@ const AgentContext = createContext<AgentContextValue | null>(null);
 
 export function AgentProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
+  const { subscribeToEvents } = useLiveEvents();
   const [status, setStatus] = useState<AgentStatus>(EMPTY_STATUS);
   const [actions, setActions] = useState<AgentAction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refreshAgent = useCallback(async () => {
+  const refreshAgent = useCallback(async (options?: { silent?: boolean }) => {
     if (!session?.access_token) {
       setStatus(EMPTY_STATUS);
       setActions([]);
@@ -50,7 +52,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    setLoading(true);
+    if (!options?.silent) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -78,12 +82,50 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const timer = window.setInterval(() => {
-      void refreshAgent();
-    }, 15000);
+    return subscribeToEvents(
+      (event) => {
+        if (event.type === "agent_status") {
+          const payload = event.payload as Partial<AgentStatus>;
+          setStatus((current) => ({
+            ...current,
+            ...payload,
+          }));
+          return;
+        }
 
-    return () => window.clearInterval(timer);
-  }, [refreshAgent, session?.access_token]);
+        if (event.type === "agent_action") {
+          const nextAction = (event.payload?.action || null) as AgentAction | null;
+          if (!nextAction) {
+            void refreshAgent({ silent: true });
+            return;
+          }
+
+          setActions((current) => {
+            if (current.some((entry) => entry.id === nextAction.id)) {
+              return current;
+            }
+            return [nextAction, ...current].slice(0, 40);
+          });
+          setStatus((current) => ({
+            ...current,
+            latestAction: nextAction,
+            latestBanner: nextAction.reason,
+            actions: current.actions.some((entry) => entry.id === nextAction.id)
+              ? current.actions
+              : [nextAction, ...current.actions].slice(0, 40),
+          }));
+          return;
+        }
+
+        if (event.type === "job_completed" || event.type === "job_failed") {
+          void refreshAgent({ silent: true });
+        }
+      },
+      {
+        types: ["agent_status", "agent_action", "job_completed", "job_failed"],
+      }
+    );
+  }, [refreshAgent, session?.access_token, subscribeToEvents]);
 
   const setAgentEnabled = useCallback(
     async (enabled: boolean) => {

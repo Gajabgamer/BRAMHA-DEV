@@ -33,18 +33,32 @@ function getRequiredEnv(name) {
   return value;
 }
 
-function getRedirectUri() {
-  return (
-    process.env.GMAIL_REDIRECT_URI ||
-    'http://localhost:8000/api/integrations/gmail/callback'
+function normalizeUrl(value) {
+  return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function getAppUrl() {
+  return normalizeUrl(process.env.APP_URL || 'http://localhost:3000');
+}
+
+function getBackendUrl() {
+  return normalizeUrl(
+    process.env.BACKEND_URL ||
+      process.env.API_URL ||
+      process.env.PUBLIC_BACKEND_URL ||
+      'http://localhost:8000'
   );
+}
+
+function getRedirectUri() {
+  return process.env.GMAIL_REDIRECT_URI || `${getBackendUrl()}/api/integrations/gmail/callback`;
 }
 
 function getCalendarRedirectUri() {
   return (
     process.env.GOOGLE_CALENDAR_REDIRECT_URI ||
     process.env.GMAIL_REDIRECT_URI ||
-    'http://localhost:8000/api/integrations/google-calendar/callback'
+    `${getBackendUrl()}/api/integrations/google-calendar/callback`
   );
 }
 
@@ -115,7 +129,7 @@ function createGoogleAuthUrl({ userId, redirectUri, scopes }) {
   const clientId = getRequiredEnv('GOOGLE_CLIENT_ID');
   const state = signState({
     userId,
-    redirectTo: process.env.APP_URL || 'http://localhost:3000/dashboard/connect',
+    redirectTo: `${getAppUrl()}/dashboard/connect`,
     createdAt: Date.now(),
   });
 

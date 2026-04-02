@@ -5,12 +5,16 @@ import ImapSetupInfoSheet from "@/components/ImapSetupInfoSheet";
 import SourceCard from "@/components/SourceCard";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/providers/AuthProvider";
-import { api, type Connection } from "@/lib/api";
+import {
+  api,
+  type Connection,
+} from "@/lib/api";
 import { isDemoUser } from "@/lib/demo-mode";
 import { getImapConfig } from "@/lib/imapConfig";
 
 type ProviderKey =
   | "gmail"
+  | "github"
   | "outlook"
   | "google-calendar"
   | "instagram"
@@ -19,7 +23,10 @@ type ProviderKey =
   | "imap"
   | "reddit"
   | "social-search";
-type ConnectedProviderKey = Exclude<ProviderKey, "reddit" | "social-search">;
+type ConnectedProviderKey = Exclude<
+  ProviderKey,
+  "reddit" | "social-search" | "github"
+>;
 type SyncableProviderKey =
   | "gmail"
   | "outlook"
@@ -53,6 +60,8 @@ function formatProviderLabel(provider: ProviderKey) {
       return "Email Inbox";
     case "google-calendar":
       return "Google Calendar";
+    case "github":
+      return "GitHub";
     default:
       return provider.charAt(0).toUpperCase() + provider.slice(1);
   }
@@ -148,6 +157,10 @@ function getFriendlySourceError(
 
   if (context === "gmail") {
     return "We couldn't start Gmail connection right now. Please try again in a moment.";
+  }
+
+  if (context === "github") {
+    return "We couldn't connect GitHub right now. Please try again in a moment.";
   }
 
   if (context === "outlook") {
@@ -327,6 +340,7 @@ export default function ConnectPage() {
     secure: true,
   });
   const [loading, setLoading] = useState(true);
+  const [refreshingConnections, setRefreshingConnections] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [syncingProvider, setSyncingProvider] = useState<ProviderKey | null>(null);
   const [connectingGmail, setConnectingGmail] = useState(false);
@@ -346,15 +360,20 @@ export default function ConnectPage() {
     [imapForm.email]
   );
 
-  const loadConnections = useCallback(async () => {
+  const loadConnections = useCallback(async (options?: { silent?: boolean }) => {
     if (!session?.access_token) {
       setConnections([]);
       setCalendarStatus(null);
       setLoading(false);
+      setRefreshingConnections(false);
       return;
     }
 
-    setLoading(true);
+    if (options?.silent) {
+      setRefreshingConnections(true);
+    } else {
+      setLoading(true);
+    }
 
     try {
       const nextConnections = await api.connections.list(session.access_token);
@@ -374,7 +393,11 @@ export default function ConnectPage() {
     } catch (err) {
       setMessage(getFriendlySourceError(err, "connections"));
     } finally {
-      setLoading(false);
+      if (options?.silent) {
+        setRefreshingConnections(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, [session?.access_token]);
 
@@ -572,7 +595,7 @@ export default function ConnectPage() {
               },
       });
 
-      await loadConnections();
+      await loadConnections({ silent: true });
       setMessage(`${formatProviderLabel(provider)} connected successfully.`);
     } catch (err) {
       setMessage(getFriendlySourceError(err, provider));
@@ -658,7 +681,7 @@ export default function ConnectPage() {
         secure: imapForm.secure,
       });
       setImapForm((current) => ({ ...current, password: "" }));
-      await loadConnections();
+      await loadConnections({ silent: true });
       setMessage(`Connected IMAP inbox for ${imapForm.email.trim()}.`);
     } catch (err) {
       setMessage(getFriendlySourceError(err, "imap"));
@@ -786,7 +809,8 @@ export default function ConnectPage() {
           provider === "imap"
             ? await api.connections.syncImap(session.access_token)
             : await api.connections.sync(session.access_token, provider, syncPayload);
-        await loadConnections();
+        await loadConnections({ silent: true });
+        await loadCalendarStatus();
         if (!options?.silent) {
           setMessage(
             `${formatProviderLabel(provider)} synced successfully.${provider === "google-calendar" ? "" : ` Imported ${result.imported} feedback item${result.imported === 1 ? "" : "s"}${typeof result.skipped === "number" ? ` and skipped ${result.skipped} non-product message${result.skipped === 1 ? "" : "s"}` : ""}`}.`
@@ -820,6 +844,7 @@ export default function ConnectPage() {
     [
       appleAppId,
       googlePlayAppId,
+      loadCalendarStatus,
       loadConnections,
       session?.access_token,
     ]
@@ -849,7 +874,7 @@ export default function ConnectPage() {
 
         setAutoSyncEnabled(enabled);
         setAutoSyncIntervalMinutes(intervalMinutes);
-        await loadConnections();
+        await loadConnections({ silent: true });
         setAutoSyncStatus(
           enabled
             ? `Auto-sync is on. Connected sources will refresh about every ${intervalMinutes} minutes while this page is open.`
@@ -941,7 +966,7 @@ export default function ConnectPage() {
 
     try {
       await api.connections.disconnect(session.access_token, connection.id);
-      await loadConnections();
+      await loadConnections({ silent: true });
       setMessage(`${formatProviderLabel(provider)} disconnected.`);
     } catch (err) {
       setMessage(getFriendlySourceError(err, "disconnect"));
@@ -1450,8 +1475,10 @@ export default function ConnectPage() {
         />
       </div>
 
-      {loading && (
-        <p className="mt-4 text-sm text-slate-500">Refreshing connected sources...</p>
+      {(loading || refreshingConnections) && (
+        <p className="mt-4 text-sm text-slate-500">
+          {loading ? "Loading connected sources..." : "Syncing changes without reloading the page..."}
+        </p>
       )}
     </div>
   );

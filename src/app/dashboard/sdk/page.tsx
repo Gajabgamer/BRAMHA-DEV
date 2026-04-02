@@ -44,7 +44,23 @@ const EMPTY_SDK_STATS: SdkStats = {
 
 const STORAGE_KEY = "product-pulse-sdk-domain";
 const SDK_CDN_URL = "https://cdn.productpulse.dev/pulse.js";
-const SDK_API_BASE = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/sdk`;
+
+function getSdkApiBase() {
+  const configuredOrigin = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (configuredOrigin) {
+    return `${configuredOrigin.replace(/\/+$/, "")}/api/sdk`;
+  }
+
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:8000/api/sdk";
+  }
+
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/api/sdk`;
+  }
+
+  return "/api/sdk";
+}
 
 function maskKey(value: string) {
   if (!value) return "";
@@ -314,7 +330,7 @@ export default function SdkPage() {
     setPreviewStatus("");
 
     try {
-      const response = await fetch(`${SDK_API_BASE}/feedback`, {
+      const response = await fetch(`${getSdkApiBase()}/feedback`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -2,9 +2,27 @@ const supabase = require('../lib/supabaseClient');
 const { createCalendarEvent, findFreeSlot } = require('./calendarService');
 const { isNoReplyAddress, sendReply } = require('./emailService');
 const { createNotification } = require('./notificationService');
+const { storeAgentMemory } = require('./agentMemoryService');
+const {
+  calculateConfidence,
+  updateLearningConfidence,
+} = require('./learningService');
+const {
+  getOutcomeGuidance,
+  recordAgentOutcome,
+} = require('./selfHealingService');
+const { clearSignalCache } = require('./issueIntelligenceService');
+const { planIssue } = require('./plannerAgentService');
 const { getDailyIssueStats } = require('../controllers/timelineController');
 const { findGroup } = require('../lib/issueAggregator');
 const { ensureUserRecords } = require('../lib/ensureUserRecords');
+const {
+  addIssueComment,
+  createApprovalRequest,
+  logWorkspaceActivity,
+  resolveWorkspaceContext,
+} = require('./collaborationService');
+const { publishSystemEvent } = require('./liveEventsService');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
@@ -195,12 +213,22 @@ async function updateAgentSettings(userId, patch) {
     throw error;
   }
 
-  return {
+  const settings = {
     enabled: data?.autonomous_actions_enabled !== false,
     state: data?.last_state || payload.last_state,
     lastRunAt: data?.last_run_at || payload.last_run_at,
     lastSummary: data?.last_summary || payload.last_summary,
   };
+
+  await publishSystemEvent({
+    userId,
+    type: 'agent_status',
+    queueName: 'realtime',
+    priority: settings.state === 'processing' ? 'high' : 'normal',
+    payload: settings,
+  }).catch(() => null);
+
+  return settings;
 }
 
 async function listAgentActions(userId, limit = 25) {
@@ -249,7 +277,31 @@ async function logAgentAction(userId, actionType, reason, metadata = {}) {
     throw error;
   }
 
-  return normalizeAgentAction(data);
+  const action = normalizeAgentAction(data);
+  await publishSystemEvent({
+    userId,
+    type: 'agent_action',
+    queueName: 'realtime',
+    priority:
+      actionType === 'predictive_alert' || actionType === 'ticket_created'
+        ? 'high'
+        : 'normal',
+    payload: {
+      action,
+    },
+  }).catch(() => null);
+
+  try {
+    await storeAgentMemory(userId, 'action', {
+      actionType,
+      reason,
+      metadata,
+    });
+  } catch {
+    // Memory capture must never block agent execution.
+  }
+
+  return action;
 }
 
 async function notifyAgentAction(userId, input) {
@@ -379,6 +431,8 @@ function buildIssueCandidate(issue, unresolvedTicketCount, repeatedKeywords, spi
   return {
     issue,
     group,
+    issueType: group.slug,
+    issueTypeLabel: group.title,
     severity,
     actionRequired,
     impact,
@@ -573,6 +627,72 @@ async function createAgentCalendarEvent(userId, candidate, ticketId, reasoning) 
   }
 }
 
+async function createAgentSuggestion(userId, candidate, reasoning, confidence) {
+  let approvalRequest = null;
+  try {
+    const workspaceContext = await resolveWorkspaceContext({ id: userId }, null);
+    approvalRequest = await createApprovalRequest(workspaceContext.workspace.id, {
+      issueId: candidate.issue.id,
+      requestedByType: 'agent',
+      requestedByUserId: null,
+      actionType: 'create_ticket',
+      payload: {
+        title: `Investigate ${candidate.issue.title}`,
+        description: reasoning.summary,
+        priority: toPriority(candidate.weight),
+      },
+      reasoning: `${reasoning.summary} ${confidence.reasoning}`.trim(),
+    });
+    await addIssueComment(
+      workspaceContext.workspace.id,
+      candidate.issue.id,
+      null,
+      `${reasoning.summary} Team approval is recommended before execution.`,
+      { isAi: true }
+    );
+    await logWorkspaceActivity(workspaceContext.workspace.id, {
+      actorType: 'agent',
+      actionType: 'approval_requested',
+      entityType: 'approval_request',
+      entityId: approvalRequest.id,
+      summary: `AI requested approval for ${candidate.issue.title}.`,
+      metadata: {
+        issueId: candidate.issue.id,
+        issueType: candidate.issueType,
+      },
+    });
+  } catch {
+    approvalRequest = null;
+  }
+
+  const action = await logAgentAction(
+    userId,
+    'action_suggested',
+    `Suggested follow-up for ${candidate.issue.title}, pending user approval.`,
+    {
+      issueId: candidate.issue.id,
+      issueType: candidate.issueType,
+      severity: candidate.severity,
+      confidenceScore: confidence.confidenceScore,
+      confidenceLevel: confidence.confidenceLevel,
+      priorityScore: confidence.priorityScore ?? null,
+      priorityLevel: confidence.priorityLevel ?? null,
+      approvalRequestId: approvalRequest?.id || null,
+      why: candidate.reason,
+      reasoning: reasoning.summary,
+    }
+  );
+
+  await notifyAgentAction(userId, {
+    title: `Suggestion ready for ${candidate.issue.title}`,
+    message: `Confidence is ${confidence.confidenceScore}%. Review the suggested action before Product Pulse proceeds.`,
+    type: 'suggestion',
+    metadata: action.metadata,
+  });
+
+  return action;
+}
+
 async function sendAgentReplies(userId, feedbackRows, existingActions) {
   if (!Array.isArray(feedbackRows) || feedbackRows.length === 0) {
     return [];
@@ -607,7 +727,13 @@ async function sendAgentReplies(userId, feedbackRows, existingActions) {
   const actions = [];
 
   for (const feedback of replyCandidates) {
-    if (hasRecentAction(existingActions, 'email_reply_sent', feedback.id)) {
+    const feedbackReference =
+      feedback.id || feedback.unique_key || feedback.external_id || null;
+
+    if (
+      feedbackReference &&
+      hasRecentAction(existingActions, 'email_reply_sent', feedbackReference)
+    ) {
       continue;
     }
 
@@ -653,8 +779,9 @@ async function sendAgentReplies(userId, feedbackRows, existingActions) {
           'email_reply_skipped',
           `Skipped reply for ${metadata.senderEmail || 'unknown sender'}.`,
           {
-            issueId: feedback.id,
-            feedbackEventId: feedback.id,
+            issueId: feedbackReference,
+            feedbackEventId: feedback.id || null,
+            feedbackUniqueKey: feedback.unique_key || null,
             senderEmail: metadata.senderEmail || null,
             reason: replyResult.reason,
           }
@@ -663,18 +790,28 @@ async function sendAgentReplies(userId, feedbackRows, existingActions) {
       continue;
     }
 
-    const { error: updateError } = await supabase
-      .from('feedback_events')
-      .update({
-        replied: true,
-        metadata: {
-          ...metadata,
-          repliedAt: new Date().toISOString(),
-          replyMessageId: replyResult.id || null,
-        },
-      })
-      .eq('id', feedback.id)
-      .eq('user_id', userId);
+    let updateQuery = supabase.from('feedback_events').update({
+      replied: true,
+      metadata: {
+        ...metadata,
+        repliedAt: new Date().toISOString(),
+        replyMessageId: replyResult.id || null,
+      },
+    });
+
+    if (feedback.id) {
+      updateQuery = updateQuery.eq('id', feedback.id);
+    } else if (feedback.unique_key) {
+      updateQuery = updateQuery.eq('unique_key', feedback.unique_key);
+    } else if (feedback.source && feedback.external_id) {
+      updateQuery = updateQuery
+        .eq('source', feedback.source)
+        .eq('external_id', feedback.external_id);
+    } else {
+      throw new Error('Missing feedback identifier for reply tracking.');
+    }
+
+    const { error: updateError } = await updateQuery.eq('user_id', userId);
 
     if (updateError) {
       throw updateError;
@@ -685,8 +822,9 @@ async function sendAgentReplies(userId, feedbackRows, existingActions) {
       'email_reply_sent',
       `Sent an acknowledgment reply to ${metadata.senderEmail}.`,
       {
-        issueId: feedback.id,
-        feedbackEventId: feedback.id,
+        issueId: feedbackReference,
+        feedbackEventId: feedback.id || null,
+        feedbackUniqueKey: feedback.unique_key || null,
         senderEmail: metadata.senderEmail || null,
         threadId: replyResult.threadId || metadata.threadId || null,
         replyMessageId: replyResult.id || null,
@@ -775,6 +913,7 @@ async function runAgent(user, options = {}) {
     lastRunAt: new Date().toISOString(),
     lastSummary: 'Agent is reviewing fresh feedback...',
   });
+  clearSignalCache(userId);
 
   try {
     const since = new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString();
@@ -830,9 +969,8 @@ async function runAgent(user, options = {}) {
         ).length;
         return buildIssueCandidate(issue, unresolvedTicketCount, repeatedKeywords, spike);
       })
-      .filter((candidate) => candidate.actionRequired)
       .sort((a, b) => b.weight - a.weight)
-      .slice(0, 2);
+      .slice(0, 3);
 
     const newActions = await sendAgentReplies(
       userId,
@@ -864,6 +1002,34 @@ async function runAgent(user, options = {}) {
 
     for (const candidate of candidates) {
       const reasoning = await getGroqReasoning(candidate, { spike });
+      const confidence = await calculateConfidence(userId, candidate.issue, {
+        frequencyCount: candidate.userCount,
+        sourceCount: Array.isArray(candidate.issue.sources)
+          ? candidate.issue.sources.length
+          : 0,
+        repeatedKeywords: candidate.repeatedKeywords,
+      });
+      await updateLearningConfidence(
+        userId,
+        confidence.issueType,
+        confidence.confidenceScore / 100
+      );
+      const decision = await planIssue(userId, candidate.issue, confidence);
+      const ticketGuidance = await getOutcomeGuidance(userId, {
+        issueType: confidence.issueType,
+        actionType: 'create_ticket',
+        confidence: confidence.confidenceScore / 100,
+      });
+      const reminderGuidance = await getOutcomeGuidance(userId, {
+        issueType: confidence.issueType,
+        actionType: 'schedule_reminder',
+        confidence: confidence.confidenceScore / 100,
+      });
+      const suggestionGuidance = await getOutcomeGuidance(userId, {
+        issueType: confidence.issueType,
+        actionType: 'suggest_fix',
+        confidence: confidence.confidenceScore / 100,
+      });
       const openTicketForIssue = openTickets.find(
         (ticket) => ticket.linked_issue_id === candidate.issue.id
       );
@@ -876,18 +1042,178 @@ async function runAgent(user, options = {}) {
         newActions.push(
           await logAgentAction(userId, 'issue_detected', candidate.reason, {
             issueId: candidate.issue.id,
+            issueType: confidence.issueType,
             title: candidate.issue.title,
             severity: candidate.severity,
             userCount: candidate.userCount,
             trendPercent: candidate.issue.trend_percent || 0,
+            priorityScore: decision.priorityScore,
+            priorityLevel: decision.priority,
+            confidenceScore: confidence.confidenceScore,
+            confidenceLevel: confidence.confidenceLevel,
+            confidenceReasoning: confidence.reasoning,
+            plannerReasoning: decision.reasoning,
+            executionMode: decision.executionMode,
             why: candidate.reason,
             reasoning: reasoning.summary,
           })
         );
       }
 
+      if (decision.anomaly.spike_detected) {
+        const anomalyActionId = `${candidate.issue.id}:anomaly`;
+        if (!hasRecentAction(existingActions, 'spike_detected', anomalyActionId)) {
+          newActions.push(
+            await logAgentAction(
+              userId,
+              'spike_detected',
+              `${candidate.issue.title} is showing a ${decision.anomaly.spike_level} anomaly spike.`,
+              {
+                issueId: anomalyActionId,
+                linkedIssueId: candidate.issue.id,
+                issueType: confidence.issueType,
+                spikeLevel: decision.anomaly.spike_level,
+                spikeRatio: decision.anomaly.spike_ratio,
+                currentHourlyRate: decision.anomaly.current_hourly_rate,
+                baselineHourlyRate: decision.anomaly.baseline_hourly_rate,
+              }
+            )
+          );
+        }
+      }
+
+      if (decision.executionMode === 'observe') {
+        if (!hasRecentAction(existingActions, 'insight_only', candidate.issue.id)) {
+          newActions.push(
+            await logAgentAction(
+              userId,
+              'insight_only',
+              `Recorded insight for ${candidate.issue.title} without taking automatic action.`,
+              {
+                issueId: candidate.issue.id,
+                issueType: confidence.issueType,
+                confidenceScore: confidence.confidenceScore,
+                confidenceLevel: confidence.confidenceLevel,
+                confidenceReasoning: confidence.reasoning,
+                priorityScore: decision.priorityScore,
+                priorityLevel: decision.priority,
+                plannerReasoning: decision.reasoning,
+                why: candidate.reason,
+                reasoning: reasoning.summary,
+              }
+            )
+          );
+        }
+        continue;
+      }
+
+      if (decision.executionMode === 'suggest') {
+        if (suggestionGuidance.shouldSuppress) {
+          newActions.push(
+            await logAgentAction(
+              userId,
+              'action_suppressed',
+              `Suppressed suggestion flow for ${candidate.issue.title} due to poor past outcomes.`,
+              {
+                issueId: candidate.issue.id,
+                issueType: confidence.issueType,
+                actionType: 'suggest_fix',
+                confidenceScore: confidence.confidenceScore,
+                confidenceLevel: confidence.confidenceLevel,
+                selfHealing: suggestionGuidance,
+              }
+            )
+          );
+          await recordAgentOutcome(userId, {
+            issueId: candidate.issue.id,
+            issueType: confidence.issueType,
+            actionType: 'suggest_fix',
+            confidence: confidence.confidenceScore / 100,
+            outcome: 'suppressed',
+            metadata: {
+              reason: suggestionGuidance.summary,
+            },
+          });
+          continue;
+        }
+
+        if (!hasRecentAction(existingActions, 'action_suggested', candidate.issue.id)) {
+          newActions.push(
+            await createAgentSuggestion(
+              userId,
+              candidate,
+              {
+                ...reasoning,
+                summary: `${reasoning.summary} ${decision.reasoning}`.trim(),
+              },
+              {
+                ...confidence,
+                priorityScore: decision.priorityScore,
+                priorityLevel: decision.priority,
+              }
+            )
+          );
+        }
+        continue;
+      }
+
+      if (
+        decision.prediction.escalating &&
+        !hasRecentAction(existingActions, 'predictive_alert', candidate.issue.id)
+      ) {
+        const alertAction = await logAgentAction(
+          userId,
+          'predictive_alert',
+          decision.prediction.prediction,
+          {
+            issueId: candidate.issue.id,
+            issueType: confidence.issueType,
+            priorityScore: decision.priorityScore,
+            priorityLevel: decision.priority,
+            confidenceScore: confidence.confidenceScore,
+            confidenceLevel: confidence.confidenceLevel,
+            anomaly: decision.anomaly,
+            trend: decision.trend,
+            prediction: decision.prediction,
+          }
+        );
+        newActions.push(alertAction);
+        await notifyAgentAction(userId, {
+          title: `${candidate.issue.title} is escalating`,
+          message: decision.prediction.prediction,
+          type: 'prediction',
+          metadata: alertAction.metadata,
+        });
+      }
+
       let createdTicket = null;
-      if (!hasOpenTicket && !hasRecentAction(existingActions, 'ticket_created', candidate.issue.id)) {
+      if (ticketGuidance.shouldSuppress) {
+        newActions.push(
+          await logAgentAction(
+            userId,
+            'action_suppressed',
+            `Suppressed automatic ticket creation for ${candidate.issue.title}.`,
+            {
+              issueId: candidate.issue.id,
+              issueType: confidence.issueType,
+              actionType: 'create_ticket',
+              confidenceScore: confidence.confidenceScore,
+              confidenceLevel: confidence.confidenceLevel,
+              selfHealing: ticketGuidance,
+            }
+          )
+        );
+        await recordAgentOutcome(userId, {
+          issueId: candidate.issue.id,
+          issueType: confidence.issueType,
+          actionType: 'create_ticket',
+          confidence: confidence.confidenceScore / 100,
+          outcome: 'suppressed',
+          metadata: {
+            reason: ticketGuidance.summary,
+          },
+        });
+      } else if (!hasOpenTicket && !hasRecentAction(existingActions, 'ticket_created', candidate.issue.id)) {
         createdTicket = await createAgentTicket(userId, candidate, reasoning);
         const action = await logAgentAction(
           userId,
@@ -895,8 +1221,12 @@ async function runAgent(user, options = {}) {
           `Created a ticket for ${candidate.issue.title}.`,
           {
             issueId: candidate.issue.id,
+            issueType: confidence.issueType,
             ticketId: createdTicket.id,
             severity: candidate.severity,
+            confidenceScore: confidence.confidenceScore,
+            confidenceLevel: confidence.confidenceLevel,
+            confidenceReasoning: confidence.reasoning,
             why: candidate.reason,
             reasoning: reasoning.summary,
           }
@@ -908,9 +1238,45 @@ async function runAgent(user, options = {}) {
           type: 'ticket',
           metadata: action.metadata,
         });
+        await recordAgentOutcome(userId, {
+          issueId: candidate.issue.id,
+          issueType: confidence.issueType,
+          actionType: 'create_ticket',
+          confidence: confidence.confidenceScore / 100,
+          outcome: 'success',
+          metadata: {
+            ticketId: createdTicket.id,
+          },
+        });
       }
 
-      if (
+      if (reminderGuidance.shouldSuppress) {
+        newActions.push(
+          await logAgentAction(
+            userId,
+            'action_suppressed',
+            `Suppressed automatic reminder scheduling for ${candidate.issue.title}.`,
+            {
+              issueId: candidate.issue.id,
+              issueType: confidence.issueType,
+              actionType: 'schedule_reminder',
+              confidenceScore: confidence.confidenceScore,
+              confidenceLevel: confidence.confidenceLevel,
+              selfHealing: reminderGuidance,
+            }
+          )
+        );
+        await recordAgentOutcome(userId, {
+          issueId: candidate.issue.id,
+          issueType: confidence.issueType,
+          actionType: 'schedule_reminder',
+          confidence: confidence.confidenceScore / 100,
+          outcome: 'suppressed',
+          metadata: {
+            reason: reminderGuidance.summary,
+          },
+        });
+      } else if (
         !hasPendingReminder &&
         !hasRecentAction(existingActions, 'reminder_created', candidate.issue.id)
       ) {
@@ -926,9 +1292,13 @@ async function runAgent(user, options = {}) {
           `Scheduled a follow-up reminder for ${candidate.issue.title}.`,
           {
             issueId: candidate.issue.id,
+            issueType: confidence.issueType,
             ticketId: createdTicket?.id || openTicketForIssue?.id || null,
             reminderId: reminder.id,
             severity: candidate.severity,
+            confidenceScore: confidence.confidenceScore,
+            confidenceLevel: confidence.confidenceLevel,
+            confidenceReasoning: confidence.reasoning,
             why: candidate.reason,
             reasoning: reasoning.summary,
           }
@@ -939,6 +1309,16 @@ async function runAgent(user, options = {}) {
           message: `A follow-up reminder has been scheduled automatically so this issue is not missed.`,
           type: 'reminder',
           metadata: action.metadata,
+        });
+        await recordAgentOutcome(userId, {
+          issueId: candidate.issue.id,
+          issueType: confidence.issueType,
+          actionType: 'schedule_reminder',
+          confidence: confidence.confidenceScore / 100,
+          outcome: 'success',
+          metadata: {
+            reminderId: reminder.id,
+          },
         });
       }
 
@@ -962,8 +1342,11 @@ async function runAgent(user, options = {}) {
               `Skipped calendar event for ${candidate.issue.title}.`,
               {
                 issueId: candidate.issue.id,
+                issueType: confidence.issueType,
                 ticketId: createdTicket?.id || openTicketForIssue?.id || null,
                 severity: candidate.severity,
+                confidenceScore: confidence.confidenceScore,
+                confidenceLevel: confidence.confidenceLevel,
                 why: candidate.reason,
                 reason: calendarResult.reason,
               }
@@ -977,8 +1360,11 @@ async function runAgent(user, options = {}) {
               `Scheduled a calendar follow-up for ${candidate.issue.title}.`,
               {
                 issueId: candidate.issue.id,
+                issueType: confidence.issueType,
                 ticketId: createdTicket?.id || openTicketForIssue?.id || null,
                 severity: candidate.severity,
+                confidenceScore: confidence.confidenceScore,
+                confidenceLevel: confidence.confidenceLevel,
                 why: candidate.reason,
                 eventId: calendarResult.event?.id || null,
                 eventLink: calendarResult.event?.htmlLink || null,
@@ -991,6 +1377,7 @@ async function runAgent(user, options = {}) {
 
     const highlightAction =
       newActions.find((action) => action.actionType === 'ticket_created') ||
+      newActions.find((action) => action.actionType === 'predictive_alert') ||
       newActions.find((action) => action.actionType === 'reminder_created') ||
       newActions[0];
 

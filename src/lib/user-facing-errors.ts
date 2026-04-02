@@ -22,7 +22,10 @@ export type UserFacingErrorContext =
   | "reminders-load"
   | "reminder-create"
   | "reminder-update"
-  | "reminder-delete";
+  | "reminder-delete"
+  | "github-connect"
+  | "github-code-insight"
+  | "github-create-pr";
 
 function getRawMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
@@ -156,6 +159,15 @@ export function toUserFacingError(
 
     case "reminder-delete":
       return "We couldn't delete that reminder right now. Please try again.";
+
+    case "github-connect":
+      return "We couldn't complete the GitHub workspace action right now. Please try again.";
+
+    case "github-code-insight":
+      return "We couldn't generate a code suggestion right now. Please try again.";
+
+    case "github-create-pr":
+      return "We couldn't create a pull request right now. Please try again.";
 
     default:
       return "Something went wrong. Please try again.";

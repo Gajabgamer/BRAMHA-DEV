@@ -1,4 +1,5 @@
 const supabase = require('../lib/supabaseClient');
+const { publishSystemEvent } = require('./liveEventsService');
 
 function normalizeNotification(row) {
   return {
@@ -54,7 +55,18 @@ async function createNotification(userId, input) {
     throw error;
   }
 
-  return normalizeNotification(data);
+  const notification = normalizeNotification(data);
+  await publishSystemEvent({
+    userId,
+    type: 'notification_created',
+    queueName: 'realtime',
+    priority: 'normal',
+    payload: {
+      notification,
+    },
+  }).catch(() => null);
+
+  return notification;
 }
 
 async function listNotifications(userId, limit = 20) {
@@ -72,7 +84,20 @@ async function listNotifications(userId, limit = 20) {
     throw error;
   }
 
-  return (data || []).map(normalizeNotification);
+  const notifications = (data || []).map(normalizeNotification);
+  for (const notification of notifications) {
+    await publishSystemEvent({
+      userId,
+      type: 'notification_read',
+      queueName: 'realtime',
+      priority: 'low',
+      payload: {
+        notificationId: notification.id,
+      },
+    }).catch(() => null);
+  }
+
+  return notifications;
 }
 
 async function markNotificationsRead(userId, ids) {

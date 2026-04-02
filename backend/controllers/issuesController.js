@@ -1,6 +1,7 @@
 const supabase = require('../lib/supabaseClient');
 const { isDemoUser } = require('../lib/demoMode');
 const { buildDemoIssueCatalog } = require('../lib/dashboardSnapshot');
+const { getAccessibleUserIds } = require('../services/collaborationService');
 
 const providerLabels = {
   gmail: 'Gmail',
@@ -121,11 +122,12 @@ async function getUserConnections(userId) {
   return data ?? [];
 }
 
-async function getRealIssues(userId) {
+async function getRealIssues(user) {
+  const access = await getAccessibleUserIds(user);
   const { data, error } = await supabase
     .from('issues')
     .select('*')
-    .eq('user_id', userId);
+    .in('user_id', access.userIds);
 
   if (error) {
     if (error.code === '42P01') {
@@ -140,12 +142,13 @@ async function getRealIssues(userId) {
     .map(({ summary, sourceBreakdown, suggestedActions, ...issue }) => issue);
 }
 
-async function getRealIssueDetail(userId, issueId) {
+async function getRealIssueDetail(user, issueId) {
+  const access = await getAccessibleUserIds(user);
   const { data: issue, error: issueError } = await supabase
     .from('issues')
     .select('*')
-    .eq('user_id', userId)
     .eq('id', issueId)
+    .in('user_id', access.userIds)
     .maybeSingle();
 
   if (issueError) {
@@ -213,7 +216,7 @@ async function getRealIssueDetail(userId, issueId) {
 const listIssues = async (req, res) => {
   try {
     if (!isDemoUser(req.user)) {
-      const issues = await getRealIssues(req.user.id);
+      const issues = await getRealIssues(req.user);
       return res.json(issues);
     }
 
@@ -231,7 +234,7 @@ const listIssues = async (req, res) => {
 const getIssueById = async (req, res) => {
   try {
     if (!isDemoUser(req.user)) {
-      const issue = await getRealIssueDetail(req.user.id, req.params.id);
+      const issue = await getRealIssueDetail(req.user, req.params.id);
 
       if (!issue) {
         return res.status(404).json({

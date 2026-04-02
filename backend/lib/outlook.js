@@ -25,11 +25,25 @@ function getRequiredEnv(name) {
   return value;
 }
 
-function getRedirectUri() {
-  return (
-    process.env.OUTLOOK_REDIRECT_URI ||
-    'http://localhost:8000/api/integrations/outlook/callback'
+function normalizeUrl(value) {
+  return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function getAppUrl() {
+  return normalizeUrl(process.env.APP_URL || 'http://localhost:3000');
+}
+
+function getBackendUrl() {
+  return normalizeUrl(
+    process.env.BACKEND_URL ||
+      process.env.API_URL ||
+      process.env.PUBLIC_BACKEND_URL ||
+      'http://localhost:8000'
   );
+}
+
+function getRedirectUri() {
+  return process.env.OUTLOOK_REDIRECT_URI || `${getBackendUrl()}/api/integrations/outlook/callback`;
 }
 
 function getStateSecret() {
@@ -84,7 +98,7 @@ function createOutlookAuthUrl({ userId }) {
   const redirectUri = getRedirectUri();
   const state = signState({
     userId,
-    redirectTo: process.env.APP_URL || 'http://localhost:3000/dashboard/connect',
+    redirectTo: `${getAppUrl()}/dashboard/connect`,
     createdAt: Date.now(),
     provider: 'outlook',
   });

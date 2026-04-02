@@ -7,6 +7,7 @@ import { DashboardLiveProvider } from "@/providers/DashboardLiveProvider";
 import { AgentProvider } from "@/providers/AgentProvider";
 import { GuideProvider } from "@/providers/GuideProvider";
 import { NotificationsProvider } from "@/providers/NotificationsProvider";
+import { WorkspaceProvider } from "@/providers/WorkspaceProvider";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 const pageMeta: Record<string, { title: string; subtitle: string }> = {
@@ -17,6 +18,18 @@ const pageMeta: Record<string, { title: string; subtitle: string }> = {
   "/dashboard/connect": {
     title: "Data Sources",
     subtitle: "Manage the pipelines feeding your product intelligence engine.",
+  },
+  "/dashboard/github": {
+    title: "GitHub Workspace",
+    subtitle: "Connect a repository, inspect issue-to-code insights, and open safe pull requests.",
+  },
+  "/dashboard/workspace": {
+    title: "Team Workspace",
+    subtitle: "Collaborate with teammates, review AI approvals, and keep issue ownership clear.",
+  },
+  "/dashboard/command-center": {
+    title: "Command Center",
+    subtitle: "Monitor autonomous decisions, inspect reasoning, and ask the system what matters most.",
   },
   "/dashboard/ai-helper": {
     title: "AI Helper",
@@ -57,19 +70,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <DashboardLiveProvider>
       <AgentProvider>
         <NotificationsProvider>
-          <GuideProvider>
-            <div className="flex h-screen overflow-hidden bg-slate-950 text-slate-50 selection:bg-indigo-500/30 selection:text-indigo-200">
-              <Sidebar />
-              <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:px-10">
-                <div className="mx-auto max-w-7xl">
-                  <ProtectedRoute>
-                    <Navbar title={meta.title} subtitle={meta.subtitle} />
-                    {children}
-                  </ProtectedRoute>
-                </div>
-              </main>
-            </div>
-          </GuideProvider>
+          <WorkspaceProvider>
+            <GuideProvider>
+              <div className="flex h-screen overflow-hidden bg-slate-950 text-slate-50 selection:bg-indigo-500/30 selection:text-indigo-200">
+                <Sidebar />
+                <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:px-10">
+                  <div className="mx-auto max-w-7xl">
+                    <ProtectedRoute>
+                      <Navbar title={meta.title} subtitle={meta.subtitle} />
+                      {children}
+                    </ProtectedRoute>
+                  </div>
+                </main>
+              </div>
+            </GuideProvider>
+          </WorkspaceProvider>
         </NotificationsProvider>
       </AgentProvider>
     </DashboardLiveProvider>

@@ -4,8 +4,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
+  Command,
   Cable,
   Bot,
+  GitBranch,
+  Users,
   Ticket,
   History,
   Package,
@@ -25,6 +28,9 @@ import { useGuide } from "@/providers/GuideProvider";
 
 const navItems = [
   { href: "/dashboard", label: "Control Room", icon: LayoutDashboard },
+  { href: "/dashboard/command-center", label: "Command Center", icon: Command },
+  { href: "/dashboard/workspace", label: "Team Workspace", icon: Users },
+  { href: "/dashboard/github", label: "GitHub", icon: GitBranch },
   { href: "/dashboard/connect", label: "Data Sources", icon: Cable },
   { href: "/dashboard/tickets", label: "Tickets", icon: Ticket },
   { href: "/dashboard/timeline", label: "Timeline", icon: History },

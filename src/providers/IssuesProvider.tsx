@@ -12,12 +12,13 @@ import type { Issue } from "@/lib/api";
 import { api } from "@/lib/api";
 import { toUserFacingError } from "@/lib/user-facing-errors";
 import { useAuth } from "./AuthProvider";
+import { useLiveEvents } from "./LiveEventsProvider";
 
 interface IssuesContextType {
   issues: Issue[];
   loading: boolean;
   error: string | null;
-  refreshIssues: () => void;
+  refreshIssues: (options?: { silent?: boolean }) => void;
 }
 
 const IssuesContext = createContext<IssuesContextType>({
@@ -32,8 +33,9 @@ export function IssuesProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { session, loading: authLoading } = useAuth();
+  const { subscribeToEvents } = useLiveEvents();
 
-  const refreshIssues = useCallback(async () => {
+  const refreshIssues = useCallback(async (options?: { silent?: boolean }) => {
     if (!session?.access_token) {
       setIssues([]);
       setError(null);
@@ -41,7 +43,9 @@ export function IssuesProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    setLoading(true);
+    if (!options?.silent) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -62,6 +66,26 @@ export function IssuesProvider({ children }: { children: ReactNode }) {
 
     void refreshIssues();
   }, [authLoading, refreshIssues]);
+
+  useEffect(() => {
+    if (!session?.access_token) {
+      return;
+    }
+
+    return subscribeToEvents(
+      () => {
+        void refreshIssues({ silent: true });
+      },
+      {
+        types: [
+          "new_feedback",
+          "agent_action",
+          "job_completed",
+          "patch_accepted",
+        ],
+      }
+    );
+  }, [refreshIssues, session?.access_token, subscribeToEvents]);
 
   return (
     <IssuesContext.Provider

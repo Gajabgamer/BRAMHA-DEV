@@ -6,6 +6,7 @@ import {
   Calendar,
   ChevronDown,
   ChevronRight,
+  GitBranch,
   Mail,
   Smartphone,
   AppWindow,
@@ -21,6 +22,7 @@ interface SourceCardProps {
   name: string;
   icon:
     | "gmail"
+    | "github"
     | "outlook"
     | "app-reviews"
     | "google-play"
@@ -50,6 +52,7 @@ interface SourceCardProps {
 
 const iconMap = {
   gmail: Mail,
+  github: GitBranch,
   outlook: Mail,
   "app-reviews": Smartphone,
   "google-play": Smartphone,
@@ -71,6 +74,20 @@ const sourceTheme = {
     hover: "hover:border-rose-400/45 hover:shadow-[0_18px_50px_-18px_rgba(244,63,94,0.45)]",
     titleHover: "group-hover:text-rose-300",
     button: "hover:border-rose-500 hover:bg-rose-500/90 hover:text-white hover:shadow-lg hover:shadow-rose-500/20",
+  },
+  github: {
+    cardIdle:
+      "border-slate-500/25 bg-[linear-gradient(135deg,rgba(148,163,184,0.14)_0%,rgba(15,23,42,0.94)_55%,rgba(15,23,42,0.98)_100%)]",
+    cardConnected:
+      "border-slate-300/30 bg-[linear-gradient(135deg,rgba(148,163,184,0.20)_0%,rgba(15,23,42,0.96)_55%,rgba(15,23,42,1)_100%)]",
+    iconIdle: "bg-slate-500/12 text-slate-200 ring-1 ring-inset ring-slate-400/20",
+    iconConnected:
+      "bg-slate-400/18 text-white ring-1 ring-inset ring-slate-300/30",
+    hover:
+      "hover:border-slate-300/45 hover:shadow-[0_18px_50px_-18px_rgba(148,163,184,0.35)]",
+    titleHover: "group-hover:text-slate-100",
+    button:
+      "hover:border-slate-400 hover:bg-slate-200 hover:text-slate-950 hover:shadow-lg hover:shadow-slate-500/20",
   },
   outlook: {
     cardIdle:

@@ -1,5 +1,6 @@
 const supabase = require('../lib/supabaseClient');
 const { insertFeedbackEventsDeduped } = require('../lib/feedbackDedup');
+const { ensureUserRecords } = require('../lib/ensureUserRecords');
 const { rebuildIssuesFromFeedback } = require('../lib/issueAggregator');
 const { fetchPlayReviews, MAX_REVIEW_COUNT } = require('../services/reviewService');
 const { extractLocation } = require('../services/locationService');
@@ -19,6 +20,8 @@ function detectReviewSentiment(rating) {
 
 async function fetchReviews(req, res) {
   try {
+    await ensureUserRecords(req.user);
+
     const appId = String(req.body?.appId || '').trim();
     const count = Math.min(Number(req.body?.count || MAX_REVIEW_COUNT), MAX_REVIEW_COUNT);
 

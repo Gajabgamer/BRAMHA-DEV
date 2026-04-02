@@ -7,6 +7,7 @@ const {
 } = require('../lib/issueAggregator');
 const { extractLocation } = require('../services/locationService');
 const { parseAgentDescription } = require('../services/agentService');
+const { getAccessibleUserIds } = require('../services/collaborationService');
 
 const VALID_STATUSES = new Set(['open', 'in_progress', 'resolved']);
 const VALID_PRIORITIES = new Set(['low', 'medium', 'high']);
@@ -56,10 +57,11 @@ async function findLinkedIssueId(userId, title, description) {
 
 async function listTickets(req, res) {
   try {
+    const access = await getAccessibleUserIds(req.user);
     const { data, error } = await supabase
       .from('tickets')
       .select('id, title, description, status, priority, linked_issue_id, created_at, updated_at, issues(id, title, priority)')
-      .eq('user_id', req.user.id)
+      .in('user_id', access.userIds)
       .order('created_at', { ascending: false });
 
     if (error) throw error;

@@ -1,5 +1,6 @@
 const supabase = require('../lib/supabaseClient');
 const { insertFeedbackEventsDeduped } = require('../lib/feedbackDedup');
+const { ensureUserRecords } = require('../lib/ensureUserRecords');
 const { rebuildIssuesFromFeedback, detectSentiment } = require('../lib/issueAggregator');
 const { classifyFeedbackEvents } = require('../lib/groqFeedbackClassifier');
 const { extractLocation } = require('../services/locationService');
@@ -8,6 +9,8 @@ const { runAgent } = require('../services/agentService');
 
 async function fetchSocialMentions(req, res) {
   try {
+    await ensureUserRecords(req.user);
+
     const query = String(req.body?.query || '').trim();
 
     if (!query) {

@@ -13,6 +13,7 @@ import type { FeedbackMessage, Issue } from "@/lib/api";
 import { useIssues } from "./IssuesProvider";
 import { useAuth } from "./AuthProvider";
 import { isDemoUser } from "@/lib/demo-mode";
+import { useLiveEvents } from "./LiveEventsProvider";
 
 export interface LiveIssue extends Issue {
   category: "Bug" | "Problem" | "Feature Request" | "Praise";
@@ -218,6 +219,7 @@ function createInitialFeedback(issues: LiveIssue[], demoUser: boolean): Feedback
 export function DashboardLiveProvider({ children }: { children: ReactNode }) {
   const { profile, user, session } = useAuth();
   const { issues, refreshIssues } = useIssues();
+  const { subscribeToEvents } = useLiveEvents();
   const demoUser =
     Boolean(session?.access_token) &&
     isDemoUser(profile.email) &&
@@ -247,12 +249,19 @@ export function DashboardLiveProvider({ children }: { children: ReactNode }) {
   }, [baseIssues, demoUser]);
 
   useEffect(() => {
-    const refreshTimer = window.setInterval(() => {
-      void refreshIssues();
-    }, 20000);
+    if (!session?.access_token || demoUser) {
+      return;
+    }
 
-    return () => window.clearInterval(refreshTimer);
-  }, [refreshIssues]);
+    return subscribeToEvents(
+      () => {
+        void refreshIssues({ silent: true });
+      },
+      {
+        types: ["new_feedback", "agent_action", "notification_created", "patch_accepted"],
+      }
+    );
+  }, [demoUser, refreshIssues, session?.access_token, subscribeToEvents]);
 
   useEffect(() => {
     if (!demoUser || !liveIssues.length) return;
