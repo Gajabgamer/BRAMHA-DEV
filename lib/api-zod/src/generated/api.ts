@@ -14,3 +14,53 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Submits code for AI-powered static analysis and returns a structured bug report
+ * @summary Analyze code for bugs
+ */
+export const AnalyzeCodeBody = zod.object({
+  code: zod.string().describe("The source code to analyze"),
+  language: zod
+    .string()
+    .optional()
+    .describe("Optional language hint (auto-detected if omitted)"),
+});
+
+export const AnalyzeCodeResponse = zod.object({
+  score: zod.number(),
+  verdict: zod.string(),
+  verdict_color: zod.string(),
+  total_issues: zod.number(),
+  severity_counts: zod.object({
+    critical: zod.number(),
+    high: zod.number(),
+    medium: zod.number(),
+    low: zod.number(),
+  }),
+  issues: zod.array(
+    zod.object({
+      type: zod.enum([
+        "syntax",
+        "bug",
+        "security",
+        "complexity",
+        "error_handling",
+        "debug",
+        "documentation",
+        "style",
+        "maintenance",
+      ]),
+      severity: zod.enum(["critical", "high", "medium", "low"]),
+      line: zod.number().nullish(),
+      message: zod.string(),
+      suggestion: zod.string(),
+    }),
+  ),
+  stats: zod.object({
+    loc: zod.number(),
+    language: zod.string(),
+    analyzed_at: zod.string(),
+  }),
+  summary: zod.string(),
+});

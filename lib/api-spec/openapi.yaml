@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: analyze
+    description: Code analysis operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /analyze:
+    post:
+      operationId: analyzeCode
+      tags: [analyze]
+      summary: Analyze code for bugs
+      description: Submits code for AI-powered static analysis and returns a structured bug report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeCodeBody"
+      responses:
+        "200":
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +66,105 @@ components:
           type: string
       required:
         - status
-
+    AnalyzeCodeBody:
+      type: object
+      properties:
+        code:
+          type: string
+          description: The source code to analyze
+        language:
+          type: string
+          description: Optional language hint (auto-detected if omitted)
+      required:
+        - code
+    IssueSeverity:
+      type: string
+      enum: [critical, high, medium, low]
+    IssueType:
+      type: string
+      enum: [syntax, bug, security, complexity, error_handling, debug, documentation, style, maintenance]
+    AnalysisIssue:
+      type: object
+      properties:
+        type:
+          $ref: "#/components/schemas/IssueType"
+        severity:
+          $ref: "#/components/schemas/IssueSeverity"
+        line:
+          type: integer
+          nullable: true
+        message:
+          type: string
+        suggestion:
+          type: string
+      required:
+        - type
+        - severity
+        - message
+        - suggestion
+    SeverityCounts:
+      type: object
+      properties:
+        critical:
+          type: integer
+        high:
+          type: integer
+        medium:
+          type: integer
+        low:
+          type: integer
+      required:
+        - critical
+        - high
+        - medium
+        - low
+    AnalysisStats:
+      type: object
+      properties:
+        loc:
+          type: integer
+        language:
+          type: string
+        analyzed_at:
+          type: string
+      required:
+        - loc
+        - language
+        - analyzed_at
+    AnalysisResult:
+      type: object
+      properties:
+        score:
+          type: integer
+        verdict:
+          type: string
+        verdict_color:
+          type: string
+        total_issues:
+          type: integer
+        severity_counts:
+          $ref: "#/components/schemas/SeverityCounts"
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalysisIssue"
+        stats:
+          $ref: "#/components/schemas/AnalysisStats"
+        summary:
+          type: string
+      required:
+        - score
+        - verdict
+        - verdict_color
+        - total_issues
+        - severity_counts
+        - issues
+        - stats
+        - summary
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

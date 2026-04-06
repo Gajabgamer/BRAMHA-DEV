@@ -5,18 +5,26 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  AnalysisResult,
+  AnalyzeCodeBody,
+  ErrorResponse,
+  HealthStatus,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -99,3 +107,90 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Submits code for AI-powered static analysis and returns a structured bug report
+ * @summary Analyze code for bugs
+ */
+export const getAnalyzeCodeUrl = () => {
+  return `/api/analyze`;
+};
+
+export const analyzeCode = async (
+  analyzeCodeBody: AnalyzeCodeBody,
+  options?: RequestInit,
+): Promise<AnalysisResult> => {
+  return customFetch<AnalysisResult>(getAnalyzeCodeUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(analyzeCodeBody),
+  });
+};
+
+export const getAnalyzeCodeMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof analyzeCode>>,
+    TError,
+    { data: BodyType<AnalyzeCodeBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof analyzeCode>>,
+  TError,
+  { data: BodyType<AnalyzeCodeBody> },
+  TContext
+> => {
+  const mutationKey = ["analyzeCode"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof analyzeCode>>,
+    { data: BodyType<AnalyzeCodeBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return analyzeCode(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AnalyzeCodeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof analyzeCode>>
+>;
+export type AnalyzeCodeMutationBody = BodyType<AnalyzeCodeBody>;
+export type AnalyzeCodeMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Analyze code for bugs
+ */
+export const useAnalyzeCode = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof analyzeCode>>,
+    TError,
+    { data: BodyType<AnalyzeCodeBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof analyzeCode>>,
+  TError,
+  { data: BodyType<AnalyzeCodeBody> },
+  TContext
+> => {
+  return useMutation(getAnalyzeCodeMutationOptions(options));
+};

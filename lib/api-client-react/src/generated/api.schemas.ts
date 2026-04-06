@@ -8,3 +8,69 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface AnalyzeCodeBody {
+  /** The source code to analyze */
+  code: string;
+  /** Optional language hint (auto-detected if omitted) */
+  language?: string;
+}
+
+export type IssueSeverity = (typeof IssueSeverity)[keyof typeof IssueSeverity];
+
+export const IssueSeverity = {
+  critical: "critical",
+  high: "high",
+  medium: "medium",
+  low: "low",
+} as const;
+
+export type IssueType = (typeof IssueType)[keyof typeof IssueType];
+
+export const IssueType = {
+  syntax: "syntax",
+  bug: "bug",
+  security: "security",
+  complexity: "complexity",
+  error_handling: "error_handling",
+  debug: "debug",
+  documentation: "documentation",
+  style: "style",
+  maintenance: "maintenance",
+} as const;
+
+export interface AnalysisIssue {
+  type: IssueType;
+  severity: IssueSeverity;
+  line?: number | null;
+  message: string;
+  suggestion: string;
+}
+
+export interface SeverityCounts {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+}
+
+export interface AnalysisStats {
+  loc: number;
+  language: string;
+  analyzed_at: string;
+}
+
+export interface AnalysisResult {
+  score: number;
+  verdict: string;
+  verdict_color: string;
+  total_issues: number;
+  severity_counts: SeverityCounts;
+  issues: AnalysisIssue[];
+  stats: AnalysisStats;
+  summary: string;
+}
+
+export interface ErrorResponse {
+  error: string;
+}
