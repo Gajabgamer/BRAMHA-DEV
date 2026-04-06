@@ -401,7 +401,7 @@ export default function Home() {
                 <Separator className="bg-border/50" />
 
                 {/* Issues List */}
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" /> Detected Issues
                   </h3>
@@ -413,28 +413,43 @@ export default function Home() {
                       <p className="text-sm text-emerald-500/70 mt-1">No significant issues detected in the analysis.</p>
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       {analyzeCode.data.issues.map((issue, i) => (
-                        <div key={i} className="group bg-card/50 border border-border/60 rounded-lg overflow-hidden transition-all hover:border-primary/40 hover:shadow-sm">
-                          <div className="p-3 border-b border-border/40 bg-muted/10 flex items-start gap-3">
-                            <div className="mt-0.5">{getSeverityBadge(issue.severity)}</div>
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1.5">
-                                <Badge variant="outline" className="text-[9px] rounded font-mono bg-background/50 text-muted-foreground uppercase tracking-wide">
-                                  {issue.type}
-                                </Badge>
-                                {issue.line && (
-                                  <span className="text-[11px] font-mono text-muted-foreground ml-auto bg-muted/30 px-1.5 py-0.5 rounded">
-                                    Line {issue.line}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-sm font-medium leading-snug text-foreground/90">{issue.message}</p>
-                            </div>
+                        <div key={i} className="group border border-border/50 rounded-lg overflow-hidden transition-all hover:border-primary/30 hover:shadow-md bg-card/40">
+                          {/* Issue header row */}
+                          <div className="flex items-center gap-2 px-3 py-2.5 bg-muted/10 border-b border-border/40">
+                            {/* Issue number */}
+                            <span className="shrink-0 w-5 h-5 rounded-full bg-muted/40 border border-border/60 flex items-center justify-center text-[10px] font-bold text-muted-foreground font-mono">
+                              {i + 1}
+                            </span>
+                            {/* Severity */}
+                            {getSeverityBadge(issue.severity)}
+                            {/* Type */}
+                            <Badge variant="outline" className="text-[9px] font-mono bg-background/40 text-muted-foreground uppercase tracking-wide border-border/50">
+                              {issue.type}
+                            </Badge>
+                            {/* Line number pushed right */}
+                            {issue.line != null && (
+                              <span className="ml-auto shrink-0 text-[11px] font-mono text-muted-foreground bg-muted/30 px-2 py-0.5 rounded border border-border/40">
+                                Line {issue.line}
+                              </span>
+                            )}
                           </div>
-                          <div className="p-3 bg-muted/5 flex items-start gap-2 group-hover:bg-primary/5 transition-colors">
-                            <ChevronRight className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                            <p className="text-sm text-muted-foreground/90 leading-relaxed font-mono text-[13px]">{issue.suggestion}</p>
+
+                          {/* Message */}
+                          <div className="px-3 pt-2.5 pb-1">
+                            <p className="text-sm font-medium text-foreground/90 leading-snug">{issue.message}</p>
+                          </div>
+
+                          {/* Fix suggestion — styled as a code block */}
+                          <div className="mx-3 mb-3 mt-2 rounded-md bg-background/60 border border-border/50 overflow-hidden">
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/5 border-b border-border/40">
+                              <ChevronRight className="w-3 h-3 text-primary shrink-0" />
+                              <span className="text-[10px] uppercase tracking-wider font-bold text-primary/70">Fix</span>
+                            </div>
+                            <pre className="px-3 py-2.5 text-[12px] text-muted-foreground font-mono leading-relaxed whitespace-pre-wrap break-words">
+                              {issue.suggestion}
+                            </pre>
                           </div>
                         </div>
                       ))}
