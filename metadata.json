@@ -1,0 +1,5 @@
+{
+  "name": "BugPredictor",
+  "description": "A forensic code analysis tool that uses AI to predict vulnerabilities and architectural flaws before they reach production.",
+  "requestFramePermissions": []
+}
