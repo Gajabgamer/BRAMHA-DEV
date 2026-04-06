@@ -18,4 +18,6 @@ export interface AnalysisResult {
   issues: AnalysisIssue[];
   stats: AnalysisStats;
   summary: string;
+  /** The corrected version of the submitted code with all identified issues fixed */
+  fixed_code: string;
 }

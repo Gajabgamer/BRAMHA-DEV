@@ -152,6 +152,9 @@ components:
           $ref: "#/components/schemas/AnalysisStats"
         summary:
           type: string
+        fixed_code:
+          type: string
+          description: The corrected version of the submitted code with all identified issues fixed
       required:
         - score
         - verdict
@@ -161,6 +164,7 @@ components:
         - issues
         - stats
         - summary
+        - fixed_code
     ErrorResponse:
       type: object
       properties:

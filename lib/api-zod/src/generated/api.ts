@@ -63,4 +63,9 @@ export const AnalyzeCodeResponse = zod.object({
     analyzed_at: zod.string(),
   }),
   summary: zod.string(),
+  fixed_code: zod
+    .string()
+    .describe(
+      "The corrected version of the submitted code with all identified issues fixed",
+    ),
 });

@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { ShieldAlert, Play, Code2, AlertTriangle, FileCode2, CheckCircle2, ChevronRight } from "lucide-react";
+import React, { useState, useRef, useEffect } from "react";
+import { ShieldAlert, Play, Code2, AlertTriangle, FileCode2, CheckCircle2, ChevronRight, Copy, Check, Wrench } from "lucide-react";
 import { useAnalyzeCode } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -41,12 +41,78 @@ const SNIPPETS = [
   }
 ];
 
+function CodeEditorWithLineNumbers({
+  value,
+  onChange,
+  placeholder,
+  readOnly = false,
+}: {
+  value: string;
+  onChange?: (val: string) => void;
+  placeholder?: string;
+  readOnly?: boolean;
+}) {
+  const lineNumbersRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const lines = value.split("\n");
+  const lineCount = Math.max(lines.length, 1);
+
+  const syncScroll = () => {
+    if (lineNumbersRef.current && textareaRef.current) {
+      lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
+    }
+  };
+
+  return (
+    <div className="flex flex-1 overflow-hidden font-mono text-sm leading-relaxed">
+      {/* Line numbers */}
+      <div
+        ref={lineNumbersRef}
+        className="shrink-0 w-10 overflow-hidden bg-muted/20 border-r border-border/40 text-right select-none"
+        style={{ paddingTop: "1rem", paddingBottom: "1rem" }}
+        aria-hidden="true"
+      >
+        {Array.from({ length: lineCount }, (_, i) => (
+          <div
+            key={i + 1}
+            className="text-muted-foreground/40 text-xs leading-relaxed pr-2"
+          >
+            {i + 1}
+          </div>
+        ))}
+      </div>
+
+      {/* Code textarea */}
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+        onScroll={syncScroll}
+        placeholder={placeholder}
+        readOnly={readOnly}
+        spellCheck={false}
+        className="flex-1 resize-none border-0 outline-none bg-transparent text-foreground/90 placeholder:text-muted-foreground/40 p-4 leading-relaxed"
+        style={{ fontFamily: "inherit" }}
+      />
+    </div>
+  );
+}
+
 export default function Home() {
   const [code, setCode] = useState("");
   const [language, setLanguage] = useState("auto");
+  const [fixedCode, setFixedCode] = useState("");
+  const [copied, setCopied] = useState(false);
   const { toast } = useToast();
-  
+
   const analyzeCode = useAnalyzeCode();
+
+  useEffect(() => {
+    if (analyzeCode.data?.fixed_code) {
+      setFixedCode(analyzeCode.data.fixed_code);
+    }
+  }, [analyzeCode.data]);
 
   const handleAnalyze = () => {
     if (!code.trim()) return;
@@ -62,7 +128,7 @@ export default function Home() {
           toast({
             variant: "destructive",
             title: "Analysis Failed",
-            description: err?.error || "An unexpected error occurred during analysis."
+            description: (err as any)?.error || "An unexpected error occurred during analysis."
           });
         }
       }
@@ -72,6 +138,14 @@ export default function Home() {
   const applySnippet = (snippet: typeof SNIPPETS[0]) => {
     setCode(snippet.code);
     setLanguage(snippet.lang);
+    setFixedCode("");
+  };
+
+  const handleCopyFixed = async () => {
+    if (!fixedCode) return;
+    await navigator.clipboard.writeText(fixedCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const getVerdictColor = (color: string) => {
@@ -94,6 +168,13 @@ export default function Home() {
     }
   };
 
+  const scoreCircleColor = (score: number) => {
+    if (score > 80) return 'text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]';
+    if (score > 60) return 'text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]';
+    if (score > 40) return 'text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]';
+    return 'text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]';
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans dark">
       <header className="border-b border-border/40 bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
@@ -108,9 +189,10 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="flex-1 container mx-auto px-4 py-6 grid lg:grid-cols-2 gap-6 items-start h-[calc(100vh-3.5rem)]">
-        {/* Editor Section */}
-        <div className="flex flex-col gap-4 h-full">
+      <main className="flex-1 container mx-auto px-4 py-6 grid lg:grid-cols-2 gap-6 items-start">
+        {/* Left Column: Editor + Fixed Code */}
+        <div className="flex flex-col gap-4">
+          {/* Editor Header */}
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <Code2 className="w-5 h-5 text-muted-foreground" />
@@ -127,8 +209,8 @@ export default function Home() {
                   ))}
                 </SelectContent>
               </Select>
-              <Button 
-                onClick={handleAnalyze} 
+              <Button
+                onClick={handleAnalyze}
                 disabled={!code.trim() || analyzeCode.isPending}
                 size="sm"
                 className="h-8 gap-1.5 font-semibold"
@@ -148,31 +230,31 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="relative flex-1 min-h-[400px] border border-border/50 rounded-lg overflow-hidden bg-card/30 flex flex-col focus-within:border-primary/50 transition-colors shadow-sm">
+          {/* Code Editor with Line Numbers */}
+          <div className="border border-border/50 rounded-lg overflow-hidden bg-card/30 flex flex-col focus-within:border-primary/50 transition-colors shadow-sm min-h-[320px]">
             <div className="bg-muted/30 border-b border-border/50 px-4 py-2 flex items-center justify-between text-xs font-mono text-muted-foreground">
               <span className="flex items-center gap-2">
                 <FileCode2 className="w-3.5 h-3.5" />
                 {language === 'auto' ? 'unknown.src' : `main.${language}`}
               </span>
-              {code && <span>{code.split('\n').length} loc</span>}
+              {code && <span>{code.split('\n').length} lines</span>}
             </div>
-            <Textarea
+            <CodeEditorWithLineNumbers
               value={code}
-              onChange={(e) => setCode(e.target.value)}
+              onChange={setCode}
               placeholder="Paste your source code here for static analysis..."
-              className="flex-1 resize-none border-0 focus-visible:ring-0 rounded-none font-mono text-sm leading-relaxed p-4 bg-transparent text-foreground/90 placeholder:text-muted-foreground/40"
-              spellCheck={false}
             />
           </div>
 
+          {/* Test Snippets */}
           {!code && !analyzeCode.data && !analyzeCode.isPending && (
             <div className="bg-card/30 border border-border/50 rounded-lg p-4 shadow-sm">
               <h3 className="text-sm font-medium mb-3 text-muted-foreground">Test Targets</h3>
               <div className="flex flex-wrap gap-2">
                 {SNIPPETS.map((snippet, idx) => (
-                  <Button 
-                    key={idx} 
-                    variant="outline" 
+                  <Button
+                    key={idx}
+                    variant="outline"
                     size="sm"
                     className="text-xs bg-background/50 border-border/50 hover:bg-muted/50 hover:text-primary transition-colors"
                     onClick={() => applySnippet(snippet)}
@@ -184,10 +266,53 @@ export default function Home() {
               </div>
             </div>
           )}
+
+          {/* Fixed Code Section */}
+          {(analyzeCode.data || fixedCode) && (
+            <div className="border border-border/50 rounded-lg overflow-hidden bg-card/30 flex flex-col shadow-sm animate-in slide-in-from-bottom-2 duration-400">
+              <div className="bg-muted/30 border-b border-border/50 px-4 py-2 flex items-center justify-between">
+                <span className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
+                  <Wrench className="w-3.5 h-3.5 text-emerald-500" />
+                  <span className="text-emerald-500 font-semibold">Fixed Code</span>
+                  <span className="text-muted-foreground/50">— editable</span>
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={handleCopyFixed}
+                  disabled={!fixedCode}
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="text-emerald-500">Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      Copy
+                    </>
+                  )}
+                </Button>
+              </div>
+              {analyzeCode.isPending ? (
+                <div className="flex items-center justify-center p-8 text-sm text-muted-foreground gap-2">
+                  <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  Generating fixed code...
+                </div>
+              ) : (
+                <CodeEditorWithLineNumbers
+                  value={fixedCode}
+                  onChange={setFixedCode}
+                />
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Results Section */}
-        <div className="h-full bg-card border border-border/50 rounded-lg overflow-hidden flex flex-col shadow-sm">
+        {/* Right Column: Analysis Report */}
+        <div className="bg-card border border-border/50 rounded-lg overflow-hidden flex flex-col shadow-sm">
           <div className="p-4 border-b border-border/50 flex items-center justify-between bg-muted/20">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-muted-foreground" />
@@ -200,9 +325,9 @@ export default function Home() {
             )}
           </div>
 
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 max-h-[calc(100vh-10rem)]">
             {analyzeCode.isPending ? (
-              <div className="p-12 flex flex-col items-center justify-center text-center space-y-6 h-full min-h-[400px] animate-in fade-in duration-500">
+              <div className="p-12 flex flex-col items-center justify-center text-center space-y-6 min-h-[400px] animate-in fade-in duration-500">
                 <div className="relative">
                   <div className="w-24 h-24 border-4 border-primary/20 rounded-full flex items-center justify-center bg-card shadow-inner">
                     <ShieldAlert className="w-10 h-10 text-primary animate-pulse" />
@@ -220,32 +345,27 @@ export default function Home() {
               </div>
             ) : analyzeCode.data ? (
               <div className="p-6 space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-                
+
                 {/* Score Header */}
                 <div className="flex items-center gap-6">
                   <div className="relative w-28 h-28 shrink-0 flex items-center justify-center">
                     <svg className="w-full h-full transform -rotate-90 drop-shadow-md">
                       <circle cx="56" cy="56" r="52" fill="none" stroke="currentColor" strokeWidth="8" className="text-muted/30" />
-                      <circle 
-                        cx="56" cy="56" r="52" fill="none" stroke="currentColor" strokeWidth="8" 
-                        strokeDasharray={326.7} 
+                      <circle
+                        cx="56" cy="56" r="52" fill="none" stroke="currentColor" strokeWidth="8"
+                        strokeDasharray={326.7}
                         strokeDashoffset={326.7 - (326.7 * analyzeCode.data.score) / 100}
-                        className={`transition-all duration-1000 ease-out \${
-                          analyzeCode.data.score > 80 ? 'text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]' :
-                          analyzeCode.data.score > 60 ? 'text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]' :
-                          analyzeCode.data.score > 40 ? 'text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]' : 
-                          'text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]'
-                        }`}
+                        className={`transition-all duration-1000 ease-out ${scoreCircleColor(analyzeCode.data.score)}`}
                       />
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
                       <span className="text-3xl font-bold font-mono tracking-tighter text-foreground">{analyzeCode.data.score}</span>
                     </div>
                   </div>
-                  
+
                   <div className="flex-1 space-y-3">
                     <div className="flex items-center justify-between">
-                      <Badge variant="outline" className={`px-3 py-1 text-xs uppercase tracking-wider font-bold \${getVerdictColor(analyzeCode.data.verdict_color)}`}>
+                      <Badge variant="outline" className={`px-3 py-1 text-xs uppercase tracking-wider font-bold ${getVerdictColor(analyzeCode.data.verdict_color)}`}>
                         {analyzeCode.data.verdict}
                       </Badge>
                       <span className="text-xs text-muted-foreground font-mono bg-muted/30 px-2 py-1 rounded border border-border/50">
@@ -285,7 +405,7 @@ export default function Home() {
                   <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" /> Detected Issues
                   </h3>
-                  
+
                   {analyzeCode.data.issues.length === 0 ? (
                     <div className="flex flex-col items-center justify-center p-8 text-center bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
                       <CheckCircle2 className="w-12 h-12 text-emerald-500 mb-3 drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]" />
@@ -324,7 +444,7 @@ export default function Home() {
 
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center p-8">
+              <div className="flex flex-col items-center justify-center min-h-[400px] text-center p-8">
                 <div className="w-16 h-16 rounded-full bg-card border border-border/50 flex items-center justify-center mb-4 shadow-sm">
                   <ShieldAlert className="w-8 h-8 text-muted-foreground/30" />
                 </div>

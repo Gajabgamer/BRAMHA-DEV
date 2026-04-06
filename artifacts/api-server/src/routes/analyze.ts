@@ -100,7 +100,8 @@ Always respond in this exact JSON structure:
     "language": "<detected language>",
     "analyzed_at": "<ISO timestamp>"
   },
-  "summary": "<2-3 sentence human-readable overview of the code quality and top concerns>"
+  "summary": "<2-3 sentence human-readable overview of the code quality and top concerns>",
+  "fixed_code": "<the complete corrected version of the submitted code with ALL identified issues fixed — if the code is already clean, return the original code unchanged>"
 }
 
 ## RULES
