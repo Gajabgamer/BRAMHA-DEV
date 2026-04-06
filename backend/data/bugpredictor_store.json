@@ -1,0 +1,239 @@
+{
+  "users": [
+    {
+      "id": "user_demo",
+      "name": "Ava Lin",
+      "email": "demo@bugpredictor.dev",
+      "password_hash": "0ead2060b65992dca4769af601a1b3a35ef38cfad2c2c465bb160ea764157c5d",
+      "role": "admin",
+      "company": "BugPredictor Labs",
+      "created_at": "2026-03-07T09:00:00+00:00"
+    }
+  ],
+  "sessions": {
+    "bp_3e60a01719c5434593cfecf92db1d050": "user_demo",
+    "bp_4cb42ad0835f42b99d2d4e43721f92cd": "user_demo",
+    "bp_3b20dd0712f341059bae305c297c1af2": "user_demo",
+    "bp_e1fae69bc1cf4f7d9b34f9ff8831a822": "user_demo"
+  },
+  "projects": [
+    {
+      "id": "project_bugpredictor_core",
+      "owner_id": "user_demo",
+      "name": "BugPredictor Core",
+      "description": "Core risk scoring engine for Python services and pull requests.",
+      "repo": "bugpredictor/core-engine",
+      "language": "python",
+      "status": "Healthy",
+      "branch": "main",
+      "team": [
+        {
+          "id": "tm_1",
+          "name": "Ava Lin",
+          "role": "Lead Engineer"
+        },
+        {
+          "id": "tm_2",
+          "name": "Noah Kim",
+          "role": "ML Engineer"
+        },
+        {
+          "id": "tm_3",
+          "name": "Rhea Patel",
+          "role": "Platform Engineer"
+        }
+      ],
+      "github": {
+        "connected": true,
+        "owner": "bugpredictor",
+        "repo": "core-engine",
+        "installation_hint": "Use a GitHub App or PAT in production.",
+        "triggers": {
+          "push": true,
+          "pull_request": true
+        },
+        "last_event": {
+          "type": "pull_request",
+          "timestamp": "2026-04-05T14:00:00+00:00",
+          "description": "PR #184 triggered an automated scan for risky retry logic."
+        }
+      },
+      "comments": [
+        {
+          "id": "comment_1",
+          "author": "Rhea Patel",
+          "text": "The retry branch still needs a timeout guard before merge.",
+          "line": 14,
+          "created_at": "2026-04-05T16:00:00+00:00"
+        },
+        {
+          "id": "comment_2",
+          "author": "Noah Kim",
+          "text": "Risk score dropped after replacing the string-built SQL query.",
+          "line": 8,
+          "created_at": "2026-04-06T10:00:00+00:00"
+        }
+      ],
+      "assignments": [
+        {
+          "id": "assign_1",
+          "title": "Replace broad exception with payment-specific errors",
+          "assignee": "Rhea Patel",
+          "severity": "high",
+          "status": "In Progress"
+        }
+      ],
+      "analyses": [
+        {
+          "id": "analysis_1",
+          "timestamp": "2026-03-31T09:00:00+00:00",
+          "risk_score": 62,
+          "quality_score": 56,
+          "issues_count": 7,
+          "filename": "payment_guard.py",
+          "language": "python",
+          "trigger": "pull_request",
+          "top_issue": "Broad exception handling masks failed payment validations."
+        },
+        {
+          "id": "analysis_2",
+          "timestamp": "2026-04-02T09:00:00+00:00",
+          "risk_score": 48,
+          "quality_score": 68,
+          "issues_count": 5,
+          "filename": "payment_guard.py",
+          "language": "python",
+          "trigger": "push",
+          "top_issue": "Dynamic SQL builder still accepts interpolated values."
+        },
+        {
+          "id": "analysis_3",
+          "timestamp": "2026-04-04T09:00:00+00:00",
+          "risk_score": 33,
+          "quality_score": 79,
+          "issues_count": 3,
+          "filename": "payment_guard.py",
+          "language": "python",
+          "trigger": "manual",
+          "top_issue": "Loop nesting remains high in fraud scoring branch."
+        }
+      ]
+    },
+    {
+      "id": "project_editor_plugin",
+      "owner_id": "user_demo",
+      "name": "IDE Realtime Plugin",
+      "description": "Low-latency editor diagnostics for risky code paths.",
+      "repo": "bugpredictor/ide-plugin",
+      "language": "python",
+      "status": "Watch",
+      "branch": "develop",
+      "team": [
+        {
+          "id": "tm_1",
+          "name": "Ava Lin",
+          "role": "Lead Engineer"
+        },
+        {
+          "id": "tm_2",
+          "name": "Noah Kim",
+          "role": "ML Engineer"
+        },
+        {
+          "id": "tm_3",
+          "name": "Rhea Patel",
+          "role": "Platform Engineer"
+        }
+      ],
+      "github": {
+        "connected": true,
+        "owner": "bugpredictor",
+        "repo": "ide-plugin",
+        "installation_hint": "Wire webhook signing for production usage.",
+        "triggers": {
+          "push": true,
+          "pull_request": false
+        },
+        "last_event": {
+          "type": "push",
+          "timestamp": "2026-04-06T12:00:00+00:00",
+          "description": "Push scan completed on feature/realtime-buffering."
+        }
+      },
+      "comments": [
+        {
+          "id": "comment_3",
+          "author": "Ava Lin",
+          "text": "Need a smaller debounce window for the inline analyzer.",
+          "line": 4,
+          "created_at": "2026-04-04T11:00:00+00:00"
+        }
+      ],
+      "assignments": [
+        {
+          "id": "assign_2",
+          "title": "Reduce mutable editor state spread",
+          "assignee": "Noah Kim",
+          "severity": "medium",
+          "status": "Todo"
+        }
+      ],
+      "analyses": [
+        {
+          "id": "analysis_4",
+          "timestamp": "2026-04-01T09:00:00+00:00",
+          "risk_score": 41,
+          "quality_score": 72,
+          "issues_count": 4,
+          "filename": "buffer_sync.py",
+          "language": "python",
+          "trigger": "push",
+          "top_issue": "Mutable default arguments can leak editor state."
+        },
+        {
+          "id": "analysis_5",
+          "timestamp": "2026-04-05T09:00:00+00:00",
+          "risk_score": 27,
+          "quality_score": 84,
+          "issues_count": 2,
+          "filename": "buffer_sync.py",
+          "language": "python",
+          "trigger": "manual",
+          "top_issue": "Telemetry pipeline looks healthy after refactor."
+        }
+      ]
+    }
+  ],
+  "audit_log": [
+    {
+      "id": "audit_1",
+      "timestamp": "2026-04-06T13:00:00+00:00",
+      "actor": "GitHub",
+      "action": "Automated PR analysis completed for bugpredictor/core-engine"
+    },
+    {
+      "id": "audit_6addb4ca",
+      "timestamp": "2026-04-06T12:52:00.701302+00:00",
+      "actor": "Ava Lin",
+      "action": "Signed in to BugPredictor."
+    },
+    {
+      "id": "audit_3065f09a",
+      "timestamp": "2026-04-06T12:56:20.279634+00:00",
+      "actor": "Ava Lin",
+      "action": "Signed in to BugPredictor."
+    },
+    {
+      "id": "audit_0037070b",
+      "timestamp": "2026-04-06T17:12:31.946258+00:00",
+      "actor": "Ava Lin",
+      "action": "Signed in to BugPredictor."
+    },
+    {
+      "id": "audit_6f64b667",
+      "timestamp": "2026-04-06T17:14:01.902572+00:00",
+      "actor": "Ava Lin",
+      "action": "Signed in to BugPredictor."
+    }
+  ]
+}

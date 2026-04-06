@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Movie24 | Pay Per Movie · 24 Hour OTT Rental</title>
+  <meta
+    name="description"
+    content="Movie24 is a pay-per-view OTT platform where you rent a movie for 24 hours with no subscriptions."
+  >
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap"
+    rel="stylesheet"
+  >
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="cursor" id="cursor" aria-hidden="true"></div>
+
+  <header class="site-header" id="siteHeader">
+    <nav class="nav container" aria-label="Primary">
+      <a class="brand" href="#home" aria-label="Movie24 home">MOVIE<span>24</span></a>
+
+      <button
+        class="nav__toggle"
+        id="navToggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="navPanel"
+        aria-label="Open navigation"
+      >
+        <span></span>
+        <span></span>
+      </button>
+
+      <div class="nav__panel" id="navPanel">
+        <ul class="nav__links">
+          <li><a href="#movies">Browse</a></li>
+          <li><a href="#continue-watching">Continue Watching</a></li>
+          <li><a href="#my-rentals">My Rentals</a></li>
+          <li><a href="#how-it-works">How It Works</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+        </ul>
+
+        <div class="nav__actions">
+          <button
+            class="button button--ghost"
+            type="button"
+            data-user-action="open-login"
+          >
+            Log In
+          </button>
+          <button
+            class="button button--primary"
+            type="button"
+            data-user-action="open-signup"
+          >
+            Sign Up
+          </button>
+
+          <div class="profile profile--hidden" id="profileArea">
+            <div class="profile__chip" id="profileChip" aria-live="polite">A</div>
+            <div class="profile__meta">
+              <span class="profile__eyebrow">Logged in as</span>
+              <strong class="profile__name" id="profileName">Viewer</strong>
+            </div>
+            <button
+              class="button button--ghost button--small"
+              type="button"
+              data-user-action="logout"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" id="home" aria-labelledby="hero-title">
+      <div class="hero__bg" aria-hidden="true"></div>
+      <div class="hero__grain" aria-hidden="true"></div>
+
+      <div class="container hero__layout">
+        <div class="hero__content">
+          <p class="hero__badge">Pay Per Movie · No Subscription Needed</p>
+          <h1 class="hero__title" id="hero-title">
+            WATCH
+            <br>
+            <em>ANY</em> FILM
+            <br>
+            FOR <span>24 HRS</span>
+          </h1>
+          <p class="hero__subtitle">
+            Skip expensive monthly plans. Rent the exact movie you want,
+            <strong>starting at just ₹30</strong>, valid for a full 24 hours with instant access.
+          </p>
+
+          <div class="hero__actions">
+            <a class="button button--primary button--large" href="#movies">Browse Movies</a>
+            <button
+              class="button button--ghost button--large"
+              type="button"
+              data-user-action="open-signup"
+            >
+              Start Free Account
+            </button>
+          </div>
+
+          <div class="hero__stats" aria-label="Movie24 highlights">
+            <div class="stat-card">
+              <strong class="stat-card__value">500+</strong>
+              <span class="stat-card__label">Movies Available</span>
+            </div>
+            <div class="stat-card">
+              <strong class="stat-card__value">₹30</strong>
+              <span class="stat-card__label">Starting Price</span>
+            </div>
+            <div class="stat-card">
+              <strong class="stat-card__value">24hr</strong>
+              <span class="stat-card__label">Rental Window</span>
+            </div>
+            <div class="stat-card">
+              <strong class="stat-card__value">0</strong>
+              <span class="stat-card__label">Subscriptions</span>
+            </div>
+          </div>
+        </div>
+
+        <aside class="hero__spotlight" aria-label="Pricing and access highlights">
+          <article class="price-panel">
+            <span class="price-panel__label">Budget Pick</span>
+            <strong class="price-panel__amount">₹30</strong>
+            <span class="price-panel__note">Classics and fan favorites</span>
+          </article>
+
+          <article class="price-panel price-panel--featured">
+            <span class="price-panel__label">Most Popular</span>
+            <strong class="price-panel__amount">₹49</strong>
+            <span class="price-panel__note">Fresh releases in HD</span>
+          </article>
+
+          <article class="price-panel">
+            <span class="price-panel__label">Night Offer</span>
+            <strong class="price-panel__amount" id="nightOfferAmount">₹20</strong>
+            <span class="price-panel__note" id="nightOfferLabel">Selected titles between 12 AM and 5 AM</span>
+          </article>
+
+          <article class="hero-card hero-card--countdown">
+            <span class="hero-card__eyebrow">Live Rental Clock</span>
+            <div class="hero-card__countdown" aria-live="polite">
+              <span id="heroCountdownHours">23</span>
+              <span class="hero-card__divider">:</span>
+              <span id="heroCountdownMinutes">59</span>
+              <span class="hero-card__divider">:</span>
+              <span id="heroCountdownSeconds">59</span>
+            </div>
+            <p class="hero-card__text">Your access starts when you press play, not when you pay.</p>
+          </article>
+        </aside>
+      </div>
+    </section>
+
+    <div class="ticker" aria-label="Platform highlights">
+      <div class="ticker__track">
+        <span class="ticker__item">NO MONTHLY FEES</span>
+        <span class="ticker__item">PAY ONLY FOR WHAT YOU WATCH</span>
+        <span class="ticker__item">24 HOUR INSTANT ACCESS</span>
+        <span class="ticker__item">STARTING AT ₹30</span>
+        <span class="ticker__item">500+ MOVIES ON DEMAND</span>
+        <span class="ticker__item">UPI &amp; CARD PAYMENTS</span>
+        <span class="ticker__item">NIGHT OFFERS ON SELECT TITLES</span>
+        <span class="ticker__item">NO MONTHLY FEES</span>
+        <span class="ticker__item">PAY ONLY FOR WHAT YOU WATCH</span>
+        <span class="ticker__item">24 HOUR INSTANT ACCESS</span>
+        <span class="ticker__item">STARTING AT ₹30</span>
+        <span class="ticker__item">500+ MOVIES ON DEMAND</span>
+        <span class="ticker__item">UPI &amp; CARD PAYMENTS</span>
+        <span class="ticker__item">NIGHT OFFERS ON SELECT TITLES</span>
+      </div>
+    </div>
+
+    <section class="section section--dashboard" id="continue-watching" aria-labelledby="continue-title">
+      <div class="container">
+        <div class="section__head">
+          <div>
+            <span class="section__label">Your Queue</span>
+            <h2 class="section__title" id="continue-title">CONTINUE <em>WATCHING</em></h2>
+          </div>
+          <p class="section__text">
+            Pick up right where you left off across your rented titles. Progress is stored locally today and can be moved to backend APIs later.
+          </p>
+        </div>
+
+        <div class="continue-grid" id="continueWatchingGrid" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section class="section section--movies" id="movies" aria-labelledby="movies-title">
+      <div class="container">
+        <div class="section__head">
+          <div>
+            <span class="section__label">Now Available</span>
+            <h2 class="section__title" id="movies-title">BROWSE <em>FILMS</em></h2>
+          </div>
+          <p class="section__text">
+            Search, filter, preview, and rent without leaving the page. Every action is already wired with backend-friendly `data-*` hooks.
+          </p>
+        </div>
+
+        <div class="discovery-bar">
+          <label class="field field--search" for="searchInput">
+            <span class="field__label">Search</span>
+            <input
+              class="field__input"
+              id="searchInput"
+              type="search"
+              placeholder="Search by movie name"
+              autocomplete="off"
+              data-user-action="search"
+            >
+          </label>
+
+          <label class="field" for="genreFilter">
+            <span class="field__label">Filter by Genre</span>
+            <select class="field__input field__select" id="genreFilter" data-user-action="filter-genre">
+              <option value="all">All genres</option>
+              <option value="action">Action</option>
+              <option value="thriller">Thriller</option>
+              <option value="drama">Drama</option>
+              <option value="sci-fi">Sci-Fi</option>
+              <option value="romance">Romance</option>
+              <option value="comedy">Comedy</option>
+            </select>
+          </label>
+
+          <div class="offer-chip" id="nightOfferBanner" aria-live="polite">
+            <span class="offer-chip__eyebrow">Innovation Feature</span>
+            <strong class="offer-chip__title">Night Offer ₹20</strong>
+            <span class="offer-chip__note">Selected titles from 12 AM to 5 AM</span>
+          </div>
+        </div>
+
+        <div class="filter-pills" id="filterPills" aria-label="Quick filters">
+          <button class="filter-pill is-active" type="button" data-genre-pill="all">All</button>
+          <button class="filter-pill" type="button" data-genre-pill="action">Action</button>
+          <button class="filter-pill" type="button" data-genre-pill="thriller">Thriller</button>
+          <button class="filter-pill" type="button" data-genre-pill="drama">Drama</button>
+          <button class="filter-pill" type="button" data-genre-pill="sci-fi">Sci-Fi</button>
+          <button class="filter-pill" type="button" data-genre-pill="romance">Romance</button>
+          <button class="filter-pill" type="button" data-genre-pill="comedy">Comedy</button>
+        </div>
+
+        <div class="section-meta">
+          <p class="section-meta__count" id="resultsCount">Loading titles...</p>
+          <p class="section-meta__hint">Search updates the grid instantly and simulates a small loading state.</p>
+        </div>
+
+        <div class="movie-grid" id="movieGrid" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section class="section section--rentals" id="my-rentals" aria-labelledby="rentals-title">
+      <div class="container">
+        <div class="section__head">
+          <div>
+            <span class="section__label">24 Hour Access</span>
+            <h2 class="section__title" id="rentals-title">MY <em>RENTALS</em></h2>
+          </div>
+          <p class="section__text">
+            Active rentals show time remaining, payment status, and quick watch actions. Expired rentals automatically disappear from the dashboard.
+          </p>
+        </div>
+
+        <div class="rental-summary" aria-label="Rental summary">
+          <article class="summary-card">
+            <span class="summary-card__label">Active Rentals</span>
+            <strong class="summary-card__value" id="summaryRentalsCount">0</strong>
+            <span class="summary-card__note">Pulled from `GET /my-rentals`</span>
+          </article>
+          <article class="summary-card">
+            <span class="summary-card__label">Closest Expiry</span>
+            <strong class="summary-card__value" id="summaryClosestExpiry">--</strong>
+            <span class="summary-card__note">Updated every second</span>
+          </article>
+          <article class="summary-card">
+            <span class="summary-card__label">Wallet Saved</span>
+            <strong class="summary-card__value">₹329</strong>
+            <span class="summary-card__note">Versus a typical monthly subscription</span>
+          </article>
+        </div>
+
+        <div class="rentals-list" id="rentalsList" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section class="section" id="how-it-works" aria-labelledby="how-title">
+      <div class="container">
+        <div class="section__head">
+          <div>
+            <span class="section__label">Simple Process</span>
+            <h2 class="section__title" id="how-title">HOW IT <em>WORKS</em></h2>
+          </div>
+          <p class="section__text">
+            The flow is intentionally short: create an account, rent one title, and watch instantly with a visible 24-hour expiry window.
+          </p>
+        </div>
+
+        <div class="steps">
+          <article class="step-card">
+            <span class="step-card__index">01</span>
+            <h3 class="step-card__title">Create an Account</h3>
+            <p class="step-card__text">Sign up with name, email, and password. The auth modal includes basic validation and mock `POST /signup` wiring.</p>
+          </article>
+          <article class="step-card">
+            <span class="step-card__index">02</span>
+            <h3 class="step-card__title">Browse and Preview</h3>
+            <p class="step-card__text">Use search, genre filters, and trailer previews to find the exact title you want without any subscription pressure.</p>
+          </article>
+          <article class="step-card">
+            <span class="step-card__index">03</span>
+            <h3 class="step-card__title">Pay via UPI or Card</h3>
+            <p class="step-card__text">The rental modal captures movie details, shows the live price, and simulates secure payment success for `POST /rent-movie`.</p>
+          </article>
+          <article class="step-card">
+            <span class="step-card__index">04</span>
+            <h3 class="step-card__title">Watch for 24 Hours</h3>
+            <p class="step-card__text">Countdown badges appear on the grid, rentals dashboard, and the hero clock so the access window always feels tangible.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="countdown-showcase" aria-labelledby="timer-title">
+      <div class="container countdown-showcase__layout">
+        <div>
+          <span class="section__label">Core Feature</span>
+          <h2 class="section__title" id="timer-title">YOUR CLOCK IS <em>TICKING</em></h2>
+          <p class="section__text">
+            A shared timer language runs through the product: cards, dashboard rows, and payment success all point to the same 24-hour access rule.
+          </p>
+        </div>
+
+        <div class="countdown-box" aria-live="polite">
+          <div class="countdown-box__unit">
+            <strong class="countdown-box__value" id="countdownHours">23</strong>
+            <span class="countdown-box__label">Hours</span>
+          </div>
+          <div class="countdown-box__unit">
+            <strong class="countdown-box__value" id="countdownMinutes">59</strong>
+            <span class="countdown-box__label">Minutes</span>
+          </div>
+          <div class="countdown-box__unit">
+            <strong class="countdown-box__value" id="countdownSeconds">59</strong>
+            <span class="countdown-box__label">Seconds</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="pricing" aria-labelledby="pricing-title">
+      <div class="container">
+        <div class="section__head">
+          <div>
+            <span class="section__label">Transparent Rates</span>
+            <h2 class="section__title" id="pricing-title">SIMPLE <em>PRICING</em></h2>
+          </div>
+          <p class="section__text">
+            Pricing stays in the ₹30 to ₹80 range with one experimental promotional layer: night pricing on selected films.
+          </p>
+        </div>
+
+        <div class="pricing-grid">
+          <article class="pricing-card">
+            <h3 class="pricing-card__title">Classic</h3>
+            <p class="pricing-card__text">Timeless hits and catalog favorites.</p>
+            <strong class="pricing-card__price">₹30</strong>
+            <ul class="pricing-card__list">
+              <li>HD streaming</li>
+              <li>1 device</li>
+              <li>Subtitles included</li>
+              <li>24 hour access</li>
+            </ul>
+          </article>
+
+          <article class="pricing-card pricing-card--featured">
+            <span class="pricing-card__badge">Most Popular</span>
+            <h3 class="pricing-card__title">New Release</h3>
+            <p class="pricing-card__text">Fresh releases and weekend blockbusters.</p>
+            <strong class="pricing-card__price">₹49</strong>
+            <ul class="pricing-card__list">
+              <li>Full HD streaming</li>
+              <li>2 devices</li>
+              <li>Pause and resume</li>
+              <li>Priority discovery placement</li>
+            </ul>
+          </article>
+
+          <article class="pricing-card">
+            <h3 class="pricing-card__title">Premium 4K</h3>
+            <p class="pricing-card__text">Best picture, audio, and premium titles.</p>
+            <strong class="pricing-card__price">₹80</strong>
+            <ul class="pricing-card__list">
+              <li>4K + Dolby audio</li>
+              <li>3 devices</li>
+              <li>Download support ready</li>
+              <li>Premium release slate</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--why" aria-labelledby="why-title">
+      <div class="container why-layout">
+        <div class="why-visual">
+          <span class="why-visual__label">Viewer Signal</span>
+          <strong class="why-visual__value">82%</strong>
+          <p class="why-visual__text">of casual viewers prefer pay-per-movie access over subscriptions for one-off watch nights.</p>
+        </div>
+
+        <div>
+          <div class="section__head section__head--compact">
+            <div>
+              <span class="section__label">Our Advantage</span>
+              <h2 class="section__title" id="why-title">WHY <em>MOVIE24</em>?</h2>
+            </div>
+          </div>
+
+          <div class="why-points">
+            <article class="why-point">
+              <h3>No Wasted Money</h3>
+              <p>Users pay only when they watch, which makes the platform far more believable for student and casual-viewer segments.</p>
+            </article>
+            <article class="why-point">
+              <h3>Fast to Decision</h3>
+              <p>Movie cards carry the key details upfront: title, genre, runtime, price, trailer, and rent action in one compact layout.</p>
+            </article>
+            <article class="why-point">
+              <h3>Backend Ready</h3>
+              <p>Buttons and forms include integration hooks so the UI can transition from mock state to real APIs without a redesign.</p>
+            </article>
+            <article class="why-point">
+              <h3>Built Around the 24hr Window</h3>
+              <p>Timers, badges, and summary cards reinforce the platform's unique rule, which makes the experience feel product-specific instead of generic.</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--testimonials" aria-labelledby="testimonials-title">
+      <div class="container">
+        <div class="section__head">
+          <div>
+            <span class="section__label">Happy Watchers</span>
+            <h2 class="section__title" id="testimonials-title">WHAT PEOPLE <em>SAY</em></h2>
+          </div>
+          <p class="section__text">
+            Keeping social proof from the original concept helps the prototype still feel like a launch-ready consumer brand.
+          </p>
+        </div>
+
+        <div class="testimonials-grid">
+          <article class="testimonial-card">
+            <strong class="testimonial-card__stars">★★★★★</strong>
+            <p class="testimonial-card__quote">I only wanted one movie for a Friday night. Paying ₹39 once felt way smarter than another monthly subscription.</p>
+            <span class="testimonial-card__author">Alok Sharma · Student</span>
+          </article>
+          <article class="testimonial-card">
+            <strong class="testimonial-card__stars">★★★★★</strong>
+            <p class="testimonial-card__quote">The timer made the rental feel super clear. I knew exactly how long I had left and finished the film the next afternoon.</p>
+            <span class="testimonial-card__author">Priya Mehta · Working Professional</span>
+          </article>
+          <article class="testimonial-card">
+            <strong class="testimonial-card__stars">★★★★☆</strong>
+            <p class="testimonial-card__quote">Search, rent, pay, and watch all happen in one flow. It feels like a real product, not just a concept page.</p>
+            <span class="testimonial-card__author">Rahul Verma · Freelancer</span>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section cta" aria-labelledby="cta-title">
+      <div class="container cta__inner">
+        <div>
+          <span class="section__label">Tonight's Watchlist</span>
+          <h2 class="section__title" id="cta-title">READY TO <em>WATCH</em> TONIGHT?</h2>
+          <p class="section__text">
+            Sign up, rent one title, and start streaming in minutes without committing to another monthly bill.
+          </p>
+        </div>
+        <div class="cta__actions">
+          <a class="button button--primary button--large" href="#movies">Browse Movies</a>
+          <button class="button button--ghost button--large" type="button" data-user-action="open-signup">Create Account</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <div>
+        <a class="brand brand--footer" href="#home">MOVIE<span>24</span></a>
+        <p class="site-footer__about">
+          India's pay-per-movie OTT rental platform for people who want the movie night, not the monthly bill.
+        </p>
+      </div>
+
+      <div>
+        <h3 class="site-footer__heading">Platform</h3>
+        <ul class="site-footer__links">
+          <li><a href="#movies">Browse</a></li>
+          <li><a href="#continue-watching">Continue Watching</a></li>
+          <li><a href="#my-rentals">My Rentals</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h3 class="site-footer__heading">Company</h3>
+        <ul class="site-footer__links">
+          <li><a href="#how-it-works">How It Works</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="#why-title">Why Movie24</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h3 class="site-footer__heading">Support</h3>
+        <ul class="site-footer__links">
+          <li><a href="#">FAQs</a></li>
+          <li><a href="#">Contact</a></li>
+          <li><a href="#">Refund Policy</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="container site-footer__bottom">
+      <span>© 2026 Movie24 · Pay Per Movie · 24 Hour OTT Rental Platform</span>
+      <span>No subscription. No auto-renewal. Just great cinema on demand.</span>
+    </div>
+  </footer>
+
+  <div class="modal-shell" id="authModal" data-modal="auth" aria-hidden="true">
+    <div class="modal-shell__backdrop" data-close-modal></div>
+    <section class="modal modal--auth" aria-labelledby="authModalTitle">
+      <button class="modal__close" type="button" aria-label="Close" data-close-modal>×</button>
+
+      <div class="modal__header">
+        <span class="modal__eyebrow">Account Access</span>
+        <h2 class="modal__title" id="authModalTitle">LOG IN OR SIGN UP</h2>
+        <p class="modal__text">Authenticate with placeholder flows now, then swap the mock service with real API calls later.</p>
+      </div>
+
+      <div class="auth-tabs" role="tablist" aria-label="Authentication">
+        <button class="auth-tabs__button is-active" type="button" data-auth-tab="login" role="tab" aria-selected="true">Login</button>
+        <button class="auth-tabs__button" type="button" data-auth-tab="signup" role="tab" aria-selected="false">Signup</button>
+      </div>
+
+      <form class="auth-form is-active" id="loginForm" novalidate>
+        <div class="auth-form__grid">
+          <label class="field" for="loginEmail">
+            <span class="field__label">Email</span>
+            <input class="field__input" id="loginEmail" name="email" type="email" placeholder="you@example.com" required>
+          </label>
+
+          <label class="field" for="loginPassword">
+            <span class="field__label">Password</span>
+            <input class="field__input" id="loginPassword" name="password" type="password" placeholder="Minimum 6 characters" required>
+          </label>
+        </div>
+
+        <p class="form-feedback" id="loginFeedback" aria-live="polite"></p>
+        <button class="button button--primary button--block" type="submit" data-user-action="login">Log In</button>
+      </form>
+
+      <form class="auth-form" id="signupForm" novalidate>
+        <div class="auth-form__grid">
+          <label class="field" for="signupName">
+            <span class="field__label">Name</span>
+            <input class="field__input" id="signupName" name="name" type="text" placeholder="Your full name" required>
+          </label>
+
+          <label class="field" for="signupEmail">
+            <span class="field__label">Email</span>
+            <input class="field__input" id="signupEmail" name="email" type="email" placeholder="you@example.com" required>
+          </label>
+
+          <label class="field" for="signupPassword">
+            <span class="field__label">Password</span>
+            <input class="field__input" id="signupPassword" name="password" type="password" placeholder="Minimum 6 characters" required>
+          </label>
+        </div>
+
+        <p class="form-feedback" id="signupFeedback" aria-live="polite"></p>
+        <button class="button button--primary button--block" type="submit" data-user-action="signup">Create Account</button>
+      </form>
+    </section>
+  </div>
+
+  <div class="modal-shell" id="rentModal" data-modal="rent" aria-hidden="true">
+    <div class="modal-shell__backdrop" data-close-modal></div>
+    <section class="modal modal--rent" aria-labelledby="rentModalTitle">
+      <button class="modal__close" type="button" aria-label="Close" data-close-modal>×</button>
+
+      <div class="modal__content" id="rentModalFormView">
+        <div class="modal__header">
+          <span class="modal__eyebrow">24 Hour Rental</span>
+          <h2 class="modal__title" id="rentModalTitle">RENT THIS MOVIE</h2>
+          <p class="modal__text">Review the title, pick a payment method, and start your watch window after purchase.</p>
+        </div>
+
+        <div class="rent-details">
+          <img class="rent-details__poster" id="rentPoster" src="" alt="Selected movie poster">
+          <div class="rent-details__meta">
+            <span class="rent-details__genre" id="rentGenre">Genre</span>
+            <h3 class="rent-details__title" id="rentMovieName">Movie Title</h3>
+            <p class="rent-details__text" id="rentMovieSynopsis">Movie description.</p>
+            <div class="rent-details__chips">
+              <span class="detail-chip" id="rentDuration">2h 10m</span>
+              <span class="detail-chip">Access starts on first play</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="price-row">
+          <div>
+            <span class="price-row__label">Rental Price</span>
+            <strong class="price-row__value" id="rentPrice">₹49</strong>
+          </div>
+          <span class="price-row__note" id="rentPriceNote">24 hour access included</span>
+        </div>
+
+        <form id="rentForm" novalidate>
+          <fieldset class="payment-methods">
+            <legend class="payment-methods__legend">Payment Options</legend>
+
+            <label class="payment-method">
+              <input type="radio" name="paymentMethod" value="upi" checked>
+              <span class="payment-method__box">
+                <strong>UPI</strong>
+                <small>Pay using any UPI ID</small>
+              </span>
+            </label>
+
+            <label class="payment-method">
+              <input type="radio" name="paymentMethod" value="card">
+              <span class="payment-method__box">
+                <strong>Card</strong>
+                <small>Credit or debit card</small>
+              </span>
+            </label>
+          </fieldset>
+
+          <div class="payment-fields" id="upiFields">
+            <label class="field" for="upiId">
+              <span class="field__label">UPI ID</span>
+              <input class="field__input" id="upiId" name="upiId" type="text" placeholder="name@bank">
+            </label>
+          </div>
+
+          <div class="payment-fields payment-fields--hidden" id="cardFields">
+            <label class="field" for="cardNumber">
+              <span class="field__label">Card Number</span>
+              <input class="field__input" id="cardNumber" name="cardNumber" type="text" inputmode="numeric" placeholder="1234 5678 9012 3456">
+            </label>
+
+            <div class="payment-fields__split">
+              <label class="field" for="cardExpiry">
+                <span class="field__label">Expiry</span>
+                <input class="field__input" id="cardExpiry" name="cardExpiry" type="text" placeholder="MM/YY">
+              </label>
+
+              <label class="field" for="cardCvv">
+                <span class="field__label">CVV</span>
+                <input class="field__input" id="cardCvv" name="cardCvv" type="password" inputmode="numeric" placeholder="123">
+              </label>
+            </div>
+          </div>
+
+          <p class="form-feedback" id="rentFeedback" aria-live="polite"></p>
+
+          <button
+            class="button button--primary button--block"
+            id="payButton"
+            type="submit"
+            data-user-action="rent"
+            data-movie-id=""
+          >
+            Proceed to Pay
+          </button>
+        </form>
+      </div>
+
+      <div class="modal__content modal__content--hidden" id="rentModalSuccessView">
+        <div class="success-panel">
+          <span class="success-panel__icon">✓</span>
+          <span class="modal__eyebrow">Payment Confirmed</span>
+          <h2 class="modal__title">PAYMENT SUCCESSFUL 🎉</h2>
+          <p class="modal__text">Your rental is active for the next 24 hours. The movie now appears in My Rentals and Continue Watching.</p>
+          <div class="success-panel__actions">
+            <button class="button button--primary" type="button" id="successWatchButton">Start Watching</button>
+            <button class="button button--ghost" type="button" data-close-modal>Maybe Later</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="modal-shell" id="trailerModal" data-modal="trailer" aria-hidden="true">
+    <div class="modal-shell__backdrop" data-close-modal></div>
+    <section class="modal modal--trailer" aria-labelledby="trailerTitle">
+      <button class="modal__close" type="button" aria-label="Close" data-close-modal>×</button>
+
+      <div class="modal__header">
+        <span class="modal__eyebrow">Trailer Preview</span>
+        <h2 class="modal__title" id="trailerTitle">WATCH TRAILER</h2>
+      </div>
+
+      <div class="trailer-preview">
+        <img class="trailer-preview__poster" id="trailerPoster" src="" alt="Trailer poster">
+        <div class="trailer-preview__content">
+          <span class="trailer-preview__meta" id="trailerMeta">Action · 2h 12m</span>
+          <h3 class="trailer-preview__title" id="trailerMovieName">Movie Title</h3>
+          <p class="trailer-preview__text" id="trailerSynopsis">Trailer description placeholder.</p>
+          <div class="trailer-preview__player">
+            <div class="trailer-preview__play">▶</div>
+            <p>This is a UI-ready trailer state. Replace this panel with a real player or OTT preview endpoint later.</p>
+          </div>
+          <div class="trailer-preview__actions">
+            <button class="button button--primary" type="button" id="trailerRentButton" data-user-action="rent" data-movie-id="">Rent Now</button>
+            <button class="button button--ghost" type="button" data-close-modal>Close</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="./script.js" defer></script>
+</body>
+</html>

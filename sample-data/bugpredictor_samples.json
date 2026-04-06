@@ -1,0 +1,36 @@
+[
+  {
+    "id": "sample_python_high_risk",
+    "language": "python",
+    "filename": "payment_guard.py",
+    "label": "high",
+    "expected_signals": [
+      "mutable default arguments",
+      "broad exception handling",
+      "dynamic SQL construction",
+      "hardcoded secret"
+    ],
+    "code": "API_TOKEN = \"super-secret\"\\n\\ndef process(user_id, retries=[]):\\n    try:\\n        cursor.execute(f\"SELECT * FROM users WHERE id = {user_id}\")\\n    except Exception:\\n        return None\\n    retries.append(user_id)\\n    return retries\\n"
+  },
+  {
+    "id": "sample_python_medium_risk",
+    "language": "python",
+    "filename": "transform.py",
+    "label": "medium",
+    "expected_signals": [
+      "too many parameters",
+      "branch complexity"
+    ],
+    "code": "def transform(a, b, c, d, e, f):\\n    if a:\\n        if b:\\n            return c + d\\n    if e:\\n        return f\\n    return None\\n"
+  },
+  {
+    "id": "sample_python_low_risk",
+    "language": "python",
+    "filename": "normalizer.py",
+    "label": "low",
+    "expected_signals": [
+      "few or no issues"
+    ],
+    "code": "def normalize_name(value: str) -> str:\\n    return value.strip().title()\\n"
+  }
+]
